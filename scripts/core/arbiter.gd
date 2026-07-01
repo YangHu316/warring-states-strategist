@@ -2,19 +2,19 @@ extends Node
 # V2 仲裁器 Autoload。负责：roll_card / parse_dialogue / apply_drift / check_ending / judge_mbti
 
 # === 几率 ===
-func roll_card(card_id: String, direction: String, target_country: String) -> Dictionary:
+func roll_card(card_id: String, direction: String, target_country: String, intel_bonus: int = 0) -> Dictionary:
 	var result: Dictionary = {
 		"success": false,
 		"deltas_player": {},
 		"deltas_country": {},
-		"intel": ""
+		"intel": "",
+		"rate": 0
 	}
 	var card: Card = _find_card(card_id)
 	if card == null:
 		push_warning("Arbiter.roll_card: unknown card %s" % card_id)
 		return result
 
-	# audience / intel 不走 roll
 	if card_id == "audience" or card_id == "intel":
 		result["success"] = true
 		return result
@@ -23,8 +23,9 @@ func roll_card(card_id: String, direction: String, target_country: String) -> Di
 	var coef: float = float(card.scale_coef)
 	var attr: String = String(card.scale_attr)
 	var attr_val: int = int(State.player_attrs.get(attr, 0))
-	var rate: int = int(round(float(base) + float(attr_val) * coef))
+	var rate: int = int(round(float(base) + float(attr_val) * coef)) + intel_bonus
 	rate = clampi(rate, 5, 95)
+	result["rate"] = rate
 
 	var roll: int = randi() % 100
 	var success: bool = roll < rate
@@ -73,53 +74,38 @@ func settle_agent_action(action: Dictionary) -> Dictionary:
 	var atype: String = String(action.get("action_type", ""))
 	var deltas: Dictionary = {}
 
-	match atype:
-		"pressure":
-			# 秦军事施压：目标国威 −5，秦战心 +3
-			_add_delta(deltas, target, {"guowei": -5})
-			_add_delta(deltas, actor, {"zhanxin": 3})
-		"alienate":
-			# 秦遣使离间：目标与另一国盟信 −8（离间目标是"某国 vs 另一国"，简化为目标国盟信 −8）
-			_add_delta(deltas, target, {"mengxin": -8})
-			# 另一非施动方也 −4（连锁）
-			for c in ["qin", "zhao", "qi"]:
-				if c != actor and c != target:
-					_add_delta(deltas, c, {"mengxin": -4})
-					break
-		"lure":
-			# 连横利诱：目标盟信向秦 +5（简化为目标 mengxin +5，代表投向秦）
-			# 但同时该目标"疏远"另一非秦国 → 另一国 mengxin −3
-			_add_delta(deltas, target, {"mengxin": 5})
-			for c in ["qin", "zhao", "qi"]:
-				if c != actor and c != target:
-					_add_delta(deltas, c, {"mengxin": -3})
-					break
-		"prepare":
-			# 备战/备战固境：己国威 +3 己战心 +5
-			_add_delta(deltas, actor, {"guowei": 3, "zhanxin": 5})
-		"seek_alliance":
-			# 求盟联齐：双方盟信 +5
-			_add_delta(deltas, actor, {"mengxin": 5})
-			_add_delta(deltas, target, {"mengxin": 5})
-		"probe":
-			# 遣使试探：不改数值（获取意图）
-			pass
-		"observation":
-			# 观望渔利：己战心 −2 己盟信 −2
-			_add_delta(deltas, actor, {"zhanxin": -2, "mengxin": -2})
-		"wait_price":
-			# 待价而沽：与出价方盟信 +5（target 即出价方）
-			_add_delta(deltas, target, {"mengxin": 5})
-			_add_delta(deltas, actor, {"mengxin": 5})
-		"hijack":
-			# 趁火打劫：对方国威 −3 己国威 +2
-			_add_delta(deltas, target, {"guowei": -3})
-			_add_delta(deltas, actor, {"guowei": 2})
-		"self_protect":
-			# 闭门自保：无变化
-			pass
-		_:
-			pass
+	if atype == "pressure":
+		_add_delta(deltas, target, {"guowei": -5})
+		_add_delta(deltas, actor, {"zhanxin": 3})
+	elif atype == "alienate":
+		_add_delta(deltas, target, {"mengxin": -8})
+		for c in ["qin", "zhao", "qi"]:
+			if c != actor and c != target:
+				_add_delta(deltas, c, {"mengxin": -4})
+				break
+	elif atype == "lure":
+		_add_delta(deltas, target, {"mengxin": 5})
+		for c in ["qin", "zhao", "qi"]:
+			if c != actor and c != target:
+				_add_delta(deltas, c, {"mengxin": -3})
+				break
+	elif atype == "prepare":
+		_add_delta(deltas, actor, {"guowei": 3, "zhanxin": 5})
+	elif atype == "seek_alliance":
+		_add_delta(deltas, actor, {"mengxin": 5})
+		_add_delta(deltas, target, {"mengxin": 5})
+	elif atype == "probe":
+		pass
+	elif atype == "observation":
+		_add_delta(deltas, actor, {"zhanxin": -2, "mengxin": -2})
+	elif atype == "wait_price":
+		_add_delta(deltas, target, {"mengxin": 5})
+		_add_delta(deltas, actor, {"mengxin": 5})
+	elif atype == "hijack":
+		_add_delta(deltas, target, {"guowei": -3})
+		_add_delta(deltas, actor, {"guowei": 2})
+	elif atype == "self_protect":
+		pass
 
 	# 应用到 State
 	for country in deltas.keys():

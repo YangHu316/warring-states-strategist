@@ -205,15 +205,12 @@ func _draw_action_cards() -> void:
 		if cid == "intel" or cid == "audience":
 			continue
 		pool.append(c)
-	var target: int = 5
-	var need: int = target - State.action_hand.size()
-	var drawn: int = 0
-	while State.action_hand.size() < target and pool.size() > 0 and drawn < 20:
-		var pick: Card = pool[randi() % pool.size()]
-		State.action_hand.append(pick)
-		drawn += 1
-	if drawn > 0:
-		push_event("[抽] 补至 %d 张（本回合抽 %d）" % [State.action_hand.size(), drawn])
+	if pool.is_empty():
+		return
+	var draw_count: int = 5 if State.current_round == 1 else 2
+	for i in range(draw_count):
+		State.action_hand.append(pool[randi() % pool.size()])
+	push_event("[抽] 抽 %d 张（手牌共 %d）" % [draw_count, State.action_hand.size()])
 
 func _refresh_hand_ui() -> void:
 	for child in action_cards_hbox.get_children():
@@ -258,32 +255,36 @@ func _on_action_card_pressed(idx: int) -> void:
 	if c == null:
 		return
 	play_sfx("play")
-	var target: String = State.player_location  # 默认打玩家所在国
-	if c.requires_direction:
-		_pop_direction(c, idx, target)
-	else:
-		_resolve_card_play(c, idx, "", target)
+	_pop_card_modal(c, idx, State.player_location, false, "")
 
-func _pop_direction(c: Card, idx: int, target: String) -> void:
+# unified: 打牌确认 modal（选目标 + 情报组合 + 方向）
+# is_active_audience: 若为 true，成功后打开面谈自输模式；失败仅名望-3
+func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audience: bool, audience_country: String) -> void:
 	var pscn := load("res://scenes/direction_popup.tscn")
 	if pscn == null:
-		_resolve_card_play(c, idx, "", target)
+		_resolve_card_play(c, idx, "", default_target)
 		return
 	var pop = pscn.instantiate()
 	add_child(pop)
 	if pop.has_method("setup"):
-		pop.setup(c, _preview_rate(c))
-	if pop.has_signal("direction_chosen"):
-		pop.direction_chosen.connect(func(dir: String):
+		pop.setup(c, default_target)
+	if pop.has_signal("card_played"):
+		pop.card_played.connect(func(dir: String, target: String, intel_indices: Array):
 			pop.queue_free()
-			if dir == "":
+			if target == "":
 				return
-			_resolve_card_play(c, idx, dir, target)
+			var success: bool = _resolve_card_play(c, idx, dir, target, intel_indices)
+			if is_active_audience:
+				if success:
+					_open_dialogue(audience_country, "active")
+				else:
+					push_event("[你] 请见%s不成——名望已扣" % _country_name(audience_country))
 		)
 
-func _resolve_card_play(c: Card, idx: int, direction: String, target: String) -> void:
+func _resolve_card_play(c: Card, idx: int, direction: String, target: String, intel_indices: Array = []) -> bool:
 	var arb = get_node("/root/Arbiter")
-	var res: Dictionary = arb.roll_card(c.id, direction, target)
+	var intel_bonus: int = intel_indices.size() * 5
+	var res: Dictionary = arb.roll_card(c.id, direction, target, intel_bonus)
 	var success: bool = bool(res.get("success", false))
 	var dp: Dictionary = res.get("deltas_player", {})
 	if dp != null and not dp.is_empty():
@@ -293,23 +294,29 @@ func _resolve_card_play(c: Card, idx: int, direction: String, target: String) ->
 		State.apply_country_delta(target, dc)
 	if idx >= 0 and idx < State.action_hand.size():
 		State.action_hand.remove_at(idx)
+	# 消耗组合的情报牌（从大到小索引删）
+	var sorted_intel = intel_indices.duplicate()
+	sorted_intel.sort()
+	sorted_intel.reverse()
+	for i in sorted_intel:
+		if i >= 0 and i < State.intel_hand.size():
+			State.intel_hand.remove_at(i)
 	State.acted_this_turn = true
 	play_sfx("success" if success else "fail")
-	var msg: String = "[你] %s%s·%s -> %s" % [c.name, ("·" + direction if direction != "" else ""), target, ("成功" if success else "失败")]
+	var bonus_txt: String = ("+情报×%d" % intel_indices.size()) if intel_indices.size() > 0 else ""
+	var msg: String = "[你] %s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
 	push_event(msg)
 	if success:
-		var placeholder: String = String(res.get("intel", ""))
-		if placeholder == "":
-			placeholder = "[情报·%s] %s%s成功" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
-		var idx_placeholder: int = State.intel_hand.size()
-		State.intel_hand.append(placeholder)
-		_refresh_hand_ui()
+		var placeholder: String = "[情报·%s] %s%s成功——待下回合入手" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
+		var idx_placeholder: int = State.pending_intel.size()
+		State.pending_intel.append(placeholder)
 		_request_intel_narration(idx_placeholder, c, direction, target)
 	_refresh_hand_ui()
 	_refresh_top_bar()
 	if typeof(AgentManager) == TYPE_OBJECT:
 		AgentManager.on_player_card_played(target, c.id, direction, success)
 	_check_death_and_react()
+	return success
 
 func _request_intel_narration(intel_idx: int, c: Card, direction: String, target: String) -> void:
 	var llm = get_node_or_null("/root/LLMClient")
@@ -347,9 +354,9 @@ func _request_intel_narration(intel_idx: int, c: Card, direction: String, target
 			var narrative: String = String((parsed as Dictionary).get("intel", ""))
 			if narrative == "":
 				return
-			if intel_idx < 0 or intel_idx >= State.intel_hand.size():
+			if intel_idx < 0 or intel_idx >= State.pending_intel.size():
 				return
-			State.intel_hand[intel_idx] = "[情报·%s] %s" % [_country_name(target), narrative]
+			State.pending_intel[intel_idx] = "[情报·%s] %s" % [_country_name(target), narrative]
 			_refresh_hand_ui()
 	)
 
@@ -388,18 +395,74 @@ func _interact_country(country: String) -> void:
 	if typeof(AgentManager) == TYPE_OBJECT:
 		status = AgentManager.get_country_status(country)
 	if status == "召见":
-		_open_dialogue(country)
+		_open_dialogue(country, "summon")
 	elif status == "决策已定":
 		_pop_decided_modal(country)
+	else:
+		# 空闲 / 谈判中 → 主动请见：先选牌打
+		_pop_active_audience_picker(country)
 
-func _open_dialogue(country: String) -> void:
+func _pop_active_audience_picker(country: String) -> void:
+	if State.action_hand.is_empty():
+		push_event("[你] 手中无牌，无法请见 %s" % _country_name(country))
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 12
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cc)
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(560, 380)
+	cc.add_child(box)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	box.add_child(vb)
+	var t := Label.new()
+	t.text = "选一张行动牌请见 %s" % _country_name(country)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 18)
+	t.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	vb.add_child(t)
+	var hint := Label.new()
+	hint.text = "牌打成功 → 见到君主，只能自输入；失败 → 名望 -3，见不到"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+	vb.add_child(hint)
+	for i in range(State.action_hand.size()):
+		var c: Card = State.action_hand[i] as Card
+		if c == null:
+			continue
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(500, 44)
+		b.text = "%s（%d%%）" % [c.name, _preview_rate(c)]
+		b.add_theme_font_size_override("font_size", 15)
+		var captured_i: int = i
+		var captured_c: Card = c
+		b.pressed.connect(func():
+			layer.queue_free()
+			_pop_card_modal(captured_c, captured_i, country, true, country)
+		)
+		vb.add_child(b)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.add_theme_font_size_override("font_size", 13)
+	cancel.pressed.connect(func(): layer.queue_free())
+	vb.add_child(cancel)
+
+func _open_dialogue(country: String, mode: String = "summon") -> void:
 	var dscn := load("res://scenes/dialogue.tscn")
 	if dscn == null:
 		return
 	var d = dscn.instantiate()
 	get_tree().root.add_child(d)
 	if d.has_method("setup"):
-		d.setup(country, _current_event_text)
+		d.setup(country, _current_event_text, mode)
 	if d.has_signal("dialogue_finished"):
 		d.dialogue_finished.connect(func(country2: String, _verdict: String):
 			if d != null and is_instance_valid(d):
@@ -577,16 +640,17 @@ func _proceed_to_next_turn() -> void:
 	play_sfx("turn")
 	if typeof(AgentManager) == TYPE_OBJECT:
 		AgentManager.reset()
-	# 国家 status 重置
 	State.country_states = {"qin": "idle", "zhao": "idle", "qi": "idle"}
+	if State.pending_intel.size() > 0:
+		for it in State.pending_intel:
+			State.intel_hand.append(it)
+		State.pending_intel.clear()
 	if State.current_round >= State.max_round:
-		# 终局
 		var arb = get_node("/root/Arbiter")
 		var res: Dictionary = arb.check_ending()
 		call_deferred("_go_ending", String(res.get("type", "situation")), String(res.get("detail", "undecided")))
 		return
 	turn_manager.advance_turn()
-	# advance_turn 代理：逆期漂移 / round++ / phase=mbti
 	var dk: String = State.check_death()
 	if dk != "":
 		play_sfx("death")

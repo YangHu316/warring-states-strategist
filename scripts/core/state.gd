@@ -32,6 +32,7 @@ var max_round: int = 6
 # 手牌
 var action_hand: Array = []  # Array[Card]
 var intel_hand: Array = []  # 情报牌另存（Dictionary）
+var pending_intel: Array = []  # 本回合行动产生的情报，回合结束时转入 intel_hand
 
 # 地点 / 状态
 var player_location: String = "qin"
@@ -170,6 +171,7 @@ func reset() -> void:
 	current_round = 1
 	action_hand.clear()
 	intel_hand.clear()
+	pending_intel.clear()
 	player_location = "qin"
 	country_states = {"qin":"idle", "zhao":"idle", "qi":"idle"}
 	acted_this_turn = false
