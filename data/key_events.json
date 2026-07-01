@@ -1,0 +1,24 @@
+{
+  "events": [
+    {"id": "e_r1_a", "round_range": [1, 1], "state_tag": "qin_probe", "text": "秦王遣内史腾携国书入赵，以互市为名探虚实。赵廷震动——这是秦近五年首次主动遣使。"},
+    {"id": "e_r1_b", "round_range": [1, 1], "state_tag": "qin_qi_probe", "text": "秦国书先一步送到临淄，提议齐秦互不侵犯，并许以三城为诚意。齐王笑纳，不置可否。"},
+
+    {"id": "e_r2_a", "round_range": [2, 2], "state_tag": "yi_yang_fell", "text": "秦军拔宜阳，斩首三万。函谷关外战云密布——赵边境压力陡增，赵齐盟信摇动。"},
+    {"id": "e_r2_b", "round_range": [2, 2], "state_tag": "zhang_yi_qi", "text": "张仪亲至临淄，以连横之说游说齐王。齐王赐金遣归，暗中令孟尝君且观成败。"},
+    {"id": "e_r2_c", "round_range": [2, 2], "state_tag": "qin_split_zz", "text": "秦急遣使分赴赵齐——谁先动，秦就先打谁。离间之计，赤裸裸摆在台面上。"},
+
+    {"id": "e_r3_a", "round_range": [3, 3], "state_tag": "hezong_forming", "text": "平原君奔走列国倡合纵之说。楚魏观望，齐王不置可否。赵王急召纵横家：孤先动，秦必攻赵。"},
+    {"id": "e_r3_b", "round_range": [3, 3], "state_tag": "hezong_break_test", "text": "秦相魏冉率兵压赵境，声言愿与赵分河为界——楚魏闻讯以为秦赵和好，欲退出合纵。"},
+
+    {"id": "e_r4_a", "round_range": [4, 4], "state_tag": "hezong_signing", "text": "六国使节齐聚邯郸——合纵到了签字的关键时刻。齐王私下仍与秦通信，密报送达赵王案头。"},
+    {"id": "e_r4_b", "round_range": [4, 4], "state_tag": "qin_pressing", "text": "秦军压境，各国噤声——谁先出头谁先死。合纵之议一时被按下不表。"},
+    {"id": "e_r4_c", "round_range": [4, 4], "state_tag": "hezong_lianheng_split", "text": "合纵与连横并立——赵求盟，秦利诱，齐观望。纵横家站哪边？"},
+
+    {"id": "e_r5_a", "round_range": [5, 5], "state_tag": "war_eve_hezong", "text": "六国联军在邯郸集结——函谷关外秦军亦在集结。决战一触即发。"},
+    {"id": "e_r5_b", "round_range": [5, 5], "state_tag": "war_eve_lianheng", "text": "秦军推进，某国先降盟信大涨——合纵之势已折其半。"},
+    {"id": "e_r5_c", "round_range": [5, 5], "state_tag": "war_eve_stalemate", "text": "双方在边境对峙——决战前夕，谁都在等对方先动。"},
+
+    {"id": "e_r6_a", "round_range": [6, 6], "state_tag": "final_hangu", "text": "函谷关外秦军陈兵——最后一搏。这一战之后，天下大势将定。"},
+    {"id": "e_r6_b", "round_range": [6, 6], "state_tag": "final_qi_defect", "text": "齐王临阵倒戈与秦暗通——赵孤立无援，联军阵脚已乱。"}
+  ]
+}

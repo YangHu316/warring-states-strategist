@@ -1,0 +1,14 @@
+{
+  "monarch_id": "qin",
+  "name": "秦王",
+  "tendency": "连横",
+  "reactions": {
+    "persuade": {"favor_delta": 8, "reaction_text": "秦王冷笑：『说客之言，孤听过太多。』"},
+    "message": {"favor_delta": 3, "reaction_text": "秦王收下书信，未置可否。"},
+    "promise": {"favor_delta": 12, "reaction_text": "秦王眼中闪过精光：『此诺，孤记下了。』"},
+    "sow_discord": {"favor_delta": -5, "reaction_text": "秦王哼道：『挑拨之计，孤岂会上当？』"},
+    "spy": {"favor_delta": -3, "reaction_text": "秦王察觉异样，目光锐利。"},
+    "prepare_war": {"favor_delta": 6, "reaction_text": "秦王赞许：『强兵方能立国，先生明白事理。』"},
+    "discard": {"favor_delta": 0, "reaction_text": "秦王并未注意到你的犹豫。"}
+  }
+}

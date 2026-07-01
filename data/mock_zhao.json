@@ -1,0 +1,14 @@
+{
+  "monarch_id": "zhao",
+  "name": "赵王",
+  "tendency": "摇摆",
+  "reactions": {
+    "persuade": {"favor_delta": 6, "reaction_text": "赵王沉思片刻：『先生所言，容寡人思之。』"},
+    "message": {"favor_delta": 4, "reaction_text": "赵王仔细阅读书信，频频点头。"},
+    "promise": {"favor_delta": 7, "reaction_text": "赵王半信半疑：『此诺当真？』"},
+    "sow_discord": {"favor_delta": 2, "reaction_text": "赵王眉头紧锁，开始怀疑邻国。"},
+    "spy": {"favor_delta": -2, "reaction_text": "赵王面色微变，但未发作。"},
+    "prepare_war": {"favor_delta": -4, "reaction_text": "赵王忧虑：『刀兵之事，恐生灵涂炭。』"},
+    "discard": {"favor_delta": 0, "reaction_text": "赵王自顾沉思，未察觉。"}
+  }
+}

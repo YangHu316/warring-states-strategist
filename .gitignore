@@ -1,0 +1,29 @@
+# Godot
+.godot/
+.import/
+export.cfg
+export_presets.cfg.bak
+*.translation
+
+# System
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Build output
+build/
+export/
+*.exe
+*.pck
+
+# API keys / secrets (paranoia — user:// is outside repo but still)
+config.cfg
+*.key
+*.env
+.env
+
+# Claude Code local
+.claude/settings.local.json

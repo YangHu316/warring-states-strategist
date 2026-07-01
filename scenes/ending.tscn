@@ -1,0 +1,56 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/ending.gd" id="1_end"]
+[ext_resource type="Texture2D" path="res://assets/bg/ending_bg.png" id="2_bg"]
+
+[node name="Ending" type="Node2D"]
+script = ExtResource("1_end")
+
+[node name="BG" type="Sprite2D" parent="."]
+position = Vector2(576, 324)
+texture = ExtResource("2_bg")
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="TitleLabel" type="Label" parent="UILayer"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 50.0
+offset_bottom = 110.0
+grow_horizontal = 2
+text = "终局"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="NarrativePanel" type="PanelContainer" parent="UILayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = -140.0
+offset_right = 420.0
+offset_bottom = 120.0
+
+[node name="NarrativeLabel" type="RichTextLabel" parent="UILayer/NarrativePanel"]
+bbcode_enabled = true
+text = "..."
+fit_content = true
+theme_override_font_sizes/normal_font_size = 17
+
+[node name="RestartButton" type="Button" parent="UILayer"]
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -110.0
+offset_right = 120.0
+offset_bottom = -50.0
+grow_horizontal = 2
+grow_vertical = 0
+text = "再来一局"
+theme_override_font_sizes/font_size = 22

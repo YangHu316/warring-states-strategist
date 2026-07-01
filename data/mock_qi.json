@@ -1,0 +1,14 @@
+{
+  "monarch_id": "qi",
+  "name": "齐王",
+  "tendency": "合纵",
+  "reactions": {
+    "persuade": {"favor_delta": 5, "reaction_text": "齐王温和颔首：『先生之意，寡人已明。』"},
+    "message": {"favor_delta": 6, "reaction_text": "齐王欣然收信：『礼数周到，难得。』"},
+    "promise": {"favor_delta": 4, "reaction_text": "齐王谨慎回应：『盟约一事，宜稳妥从事。』"},
+    "sow_discord": {"favor_delta": -6, "reaction_text": "齐王不悦：『君子不以谗言乱邦交。』"},
+    "spy": {"favor_delta": -4, "reaction_text": "齐王识破来意，神色冷淡。"},
+    "prepare_war": {"favor_delta": -8, "reaction_text": "齐王正色：『兵者凶器，圣人不得已而用之。』"},
+    "discard": {"favor_delta": 0, "reaction_text": "齐王并未介意。"}
+  }
+}

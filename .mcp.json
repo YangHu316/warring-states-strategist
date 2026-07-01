@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "godot": {
+      "command": "cmd",
+      "args": [
+        "/c",
+        "set GODOT_PORT=9082&& set MCP_TRANSPORT=stdio&& node C:/Users/vicyanghu/Downloads/Godot-MCP-main/Godot-MCP-main/server/dist/index.js"
+      ]
+    }
+  }
+}

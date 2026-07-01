@@ -1,0 +1,124 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/dialogue.gd" id="1_dlg"]
+[ext_resource type="Texture2D" path="res://assets/bg/dialogue_bg.png" id="2_bg"]
+
+[node name="Dialogue" type="Node2D"]
+script = ExtResource("1_dlg")
+
+[node name="BG" type="Sprite2D" parent="."]
+position = Vector2(576, 324)
+texture = ExtResource("2_bg")
+
+[node name="Portrait" type="Sprite2D" parent="."]
+position = Vector2(220, 320)
+scale = Vector2(2, 2)
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="TopLabel" type="Label" parent="UILayer"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 14.0
+offset_bottom = 50.0
+grow_horizontal = 2
+text = "面谈"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="NameLabel" type="Label" parent="UILayer"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -250.0
+offset_top = 60.0
+offset_right = 250.0
+offset_bottom = 92.0
+grow_horizontal = 2
+text = "..."
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+
+[node name="MonarchSpeechPanel" type="PanelContainer" parent="UILayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -160.0
+offset_right = 340.0
+offset_bottom = -50.0
+
+[node name="MonarchSpeech" type="Label" parent="UILayer/MonarchSpeechPanel"]
+text = "..."
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 15
+theme_override_colors/font_color = Color(0.95, 0.9, 0.7, 1)
+
+[node name="BriefingPanel" type="PanelContainer" parent="UILayer"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -420.0
+offset_top = 100.0
+offset_right = 420.0
+offset_bottom = 220.0
+grow_horizontal = 2
+
+[node name="BriefingVBox" type="VBoxContainer" parent="UILayer/BriefingPanel"]
+
+[node name="BriefingTitle" type="Label" parent="UILayer/BriefingPanel/BriefingVBox"]
+text = "召见前情摘要"
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="BriefingLabel" type="Label" parent="UILayer/BriefingPanel/BriefingVBox"]
+text = ""
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.9, 0.9, 0.85, 1)
+
+[node name="InputBox" type="TextEdit" parent="UILayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -340.0
+offset_top = -30.0
+offset_right = 340.0
+offset_bottom = 100.0
+placeholder_text = "在此输入对君主的回答…"
+wrap_mode = 1
+
+[node name="SubmitButton" type="Button" parent="UILayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -100.0
+offset_top = 120.0
+offset_right = 100.0
+offset_bottom = 160.0
+text = "提交"
+theme_override_font_sizes/font_size = 18
+
+[node name="ResultLabel" type="Label" parent="UILayer"]
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -420.0
+offset_top = 170.0
+offset_right = 420.0
+offset_bottom = 380.0
+text = ""
+autowrap_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.7, 1, 0.7, 1)

@@ -1,0 +1,67 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/mbti_popup.gd" id="1_pop"]
+[ext_resource type="Texture2D" path="res://assets/bg/mbti_bg.png" id="2_bg"]
+
+[node name="MBTIPopup" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_pop")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.75)
+
+[node name="BG" type="Sprite2D" parent="."]
+position = Vector2(576, 324)
+texture = ExtResource("2_bg")
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(700, 360)
+
+[node name="VBox" type="VBoxContainer" parent="Center/Box"]
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Center/Box/VBox"]
+text = "谋士问答"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="QuestionLabel" type="Label" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 80)
+text = "..."
+autowrap_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+
+[node name="OptionA" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "A"
+theme_override_font_sizes/font_size = 16
+
+[node name="OptionB" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "B"
+theme_override_font_sizes/font_size = 16
+
+[node name="OptionC" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "C 默认（不表态）"
+theme_override_font_sizes/font_size = 16
+
+[node name="TimerLabel" type="Label" parent="Center/Box/VBox"]
+text = "5"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(1, 0.7, 0.3, 1)
+
+[node name="CountdownTimer" type="Timer" parent="."]
+wait_time = 1.0
