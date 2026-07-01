@@ -166,13 +166,15 @@ func _pop_mbti(qs: Array) -> void:
 		)
 
 func _after_mbti_phase() -> void:
+	if _free_phase_started:
+		return
+	_free_phase_started = true
 	_resolve_key_event()
 	_draw_action_cards()
 	_refresh_hand_ui()
 	_refresh_top_bar()
 	if turn_manager != null:
 		turn_manager.start_free_phase()
-	_free_phase_started = true
 	next_turn_button.disabled = true
 	if typeof(AgentManager) == TYPE_OBJECT:
 		AgentManager.start_free_phase(_current_event_tag, _current_event_text)
@@ -207,7 +209,7 @@ func _draw_action_cards() -> void:
 		pool.append(c)
 	if pool.is_empty():
 		return
-	var draw_count: int = 5 if State.current_round == 1 else 2
+	var draw_count: int = 2
 	for i in range(draw_count):
 		State.action_hand.append(pool[randi() % pool.size()])
 	push_event("[抽] 抽 %d 张（手牌共 %d）" % [draw_count, State.action_hand.size()])
@@ -254,7 +256,6 @@ func _on_action_card_pressed(idx: int) -> void:
 	var c: Card = State.action_hand[idx] as Card
 	if c == null:
 		return
-	play_sfx("play")
 	_pop_card_modal(c, idx, State.player_location, false, "")
 
 # unified: 打牌确认 modal（选目标 + 情报组合 + 方向）
@@ -302,7 +303,6 @@ func _resolve_card_play(c: Card, idx: int, direction: String, target: String, in
 		if i >= 0 and i < State.intel_hand.size():
 			State.intel_hand.remove_at(i)
 	State.acted_this_turn = true
-	play_sfx("success" if success else "fail")
 	var bonus_txt: String = ("+情报×%d" % intel_indices.size()) if intel_indices.size() > 0 else ""
 	var msg: String = "[你] %s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
 	push_event(msg)
@@ -331,6 +331,7 @@ func _request_intel_narration(intel_idx: int, c: Card, direction: String, target
 	}
 	var dir_disp: String = String(dir_labels.get(direction, direction))
 	var lines: Array = [
+		"# 世界铁律：这个世界只有三个国家，秦、赵、齐。不存在韩魏楚燕等其他国家。你的叙事只能提及秦赵齐。",
 		"# 你是战国时期的一位史官，负责记录纵横家的行动。",
 		"# 事件",
 		"纵横家对%s打出了「%s%s」并成功。" % [_country_name(target), c.name, ("·" + dir_disp if dir_disp != "" else "")],
@@ -403,6 +404,10 @@ func _interact_country(country: String) -> void:
 		_pop_active_audience_picker(country)
 
 func _pop_active_audience_picker(country: String) -> void:
+	# 防御：picker 打开前若已被召见，直接开面谈跳过打牌
+	if typeof(AgentManager) == TYPE_OBJECT and AgentManager.is_country_summon(country):
+		_open_dialogue(country, "summon")
+		return
 	if State.action_hand.is_empty():
 		push_event("[你] 手中无牌，无法请见 %s" % _country_name(country))
 		return
@@ -530,11 +535,9 @@ func _pop_decided_modal(country: String) -> void:
 			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("challenge_decided"):
 				AgentManager.challenge_decided(country)
 			push_event("[你] 对%s挑战成功（%d%%），可召见" % [_country_name(country), rate])
-			play_sfx("success")
 		else:
 			State.apply_player_delta({"mingwang": -3})
 			push_event("[你] 对%s挑战失败（%d%%），名望 -3" % [_country_name(country), rate])
-			play_sfx("fail")
 		_update_country_status_labels()
 		_refresh_top_bar()
 		_check_death_and_react()

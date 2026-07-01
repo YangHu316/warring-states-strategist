@@ -215,6 +215,9 @@ func _build_prompt(ctx: Dictionary) -> String:
 	var implication: String = _event_implication(event_text, ctx)
 
 	var lines: Array = [
+		"# 世界铁律（不可违反）",
+		"这个世界只有三个国家：秦、赵、齐。**不存在**韩、魏、楚、燕等其他国家。target_country 只能是 qin/zhao/qi，narrative/reason 中不许提及其他国名。",
+		"",
 		"# 你是谁",
 		role_defs.get(country, ""),
 		"",
