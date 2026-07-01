@@ -93,13 +93,54 @@ theme_override_font_sizes/font_size = 13
 
 [node name="InputBox" type="TextEdit" parent="UILayer/Root/VBox"]
 custom_minimum_size = Vector2(0, 100)
-placeholder_text = "在此输入对君主的回答…"
+placeholder_text = "在此输入对君主的回答（可用白话，谋士会代拟）…"
 wrap_mode = 1
 
-[node name="SubmitButton" type="Button" parent="UILayer/Root/VBox"]
+[node name="SubmitHBox" type="HBoxContainer" parent="UILayer/Root/VBox"]
+theme_override_constants/separation = 8
+
+[node name="AdvisorButton" type="Button" parent="UILayer/Root/VBox/SubmitHBox"]
+size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 44)
-text = "提交"
-theme_override_font_sizes/font_size = 16
+text = "让谋士代拟"
+theme_override_font_sizes/font_size = 15
+
+[node name="SubmitButton" type="Button" parent="UILayer/Root/VBox/SubmitHBox"]
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 44)
+text = "直言进谏"
+theme_override_font_sizes/font_size = 15
+
+[node name="AdvisorPreviewPanel" type="PanelContainer" parent="UILayer/Root/VBox"]
+visible = false
+
+[node name="AdvisorPreviewVBox" type="VBoxContainer" parent="UILayer/Root/VBox/AdvisorPreviewPanel"]
+
+[node name="AdvisorTitle" type="Label" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox"]
+text = "谋士代拟稿："
+theme_override_font_sizes/font_size = 13
+theme_override_colors/font_color = Color(0.85, 0.85, 1, 1)
+
+[node name="AdvisorPreviewLabel" type="Label" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox"]
+custom_minimum_size = Vector2(0, 60)
+text = ""
+autowrap_mode = 2
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.95, 0.95, 0.75, 1)
+
+[node name="AdvisorConfirmHBox" type="HBoxContainer" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox"]
+
+[node name="AdvisorConfirmBtn" type="Button" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox"]
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 36)
+text = "以此稿进谏"
+theme_override_font_sizes/font_size = 13
+
+[node name="AdvisorRejectBtn" type="Button" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox"]
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 36)
+text = "还是我自己说"
+theme_override_font_sizes/font_size = 13
 
 [node name="ResultLabel" type="Label" parent="UILayer/Root/VBox"]
 custom_minimum_size = Vector2(0, 100)

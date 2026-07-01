@@ -275,8 +275,10 @@ func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audien
 			if target == "":
 				return
 			var success: bool = _resolve_card_play(c, idx, dir, target, intel_indices)
+			print("[DEBUG] card_played callback: success=", success, " is_active_audience=", is_active_audience, " audience_country=", audience_country)
 			if is_active_audience:
 				if success:
+					print("[DEBUG] opening dialogue mode=active for ", audience_country)
 					_open_dialogue(audience_country, "active")
 				else:
 					push_event("[你] 请见%s不成——名望已扣" % _country_name(audience_country))
@@ -468,6 +470,12 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 	get_tree().root.add_child(d)
 	if d.has_method("setup"):
 		d.setup(country, _current_event_text, mode)
+	if d.has_signal("audience_settled"):
+		d.audience_settled.connect(func(country2: String, verdict: String, _player_text: String, summary: String):
+			push_event("[反应] 三国听闻%s面谈结果，各有动作……" % _country_name(country2))
+			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("trigger_reaction_round"):
+				AgentManager.trigger_reaction_round(country2, verdict, summary)
+		)
 	if d.has_signal("dialogue_finished"):
 		d.dialogue_finished.connect(func(country2: String, _verdict: String):
 			if d != null and is_instance_valid(d):

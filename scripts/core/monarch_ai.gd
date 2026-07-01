@@ -91,6 +91,123 @@ func pick_action(ctx: Dictionary) -> Dictionary:
 		memory.pop_front()
 	return out
 
+# 反应轮：面谈后其他君主的性格化响应
+func pick_reaction_async(ctx: Dictionary, callback: Callable) -> void:
+	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
+	if llm == null or not llm.is_ready():
+		if callback.is_valid():
+			var mock_out = _mock_reaction(ctx)
+			mock_out["source"] = "mock:no_llm"
+			callback.call(mock_out)
+		return
+	var prompt: String = _build_reaction_prompt(ctx)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 10.0, "temperature": 0.85, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				if callback.is_valid():
+					var mock_out = _mock_reaction(ctx)
+					mock_out["source"] = "mock:%s" % err
+					callback.call(mock_out)
+				return
+			var out = _validate_llm_action(parsed, ctx)
+			if out.is_empty():
+				if callback.is_valid():
+					var mock_out = _mock_reaction(ctx)
+					mock_out["source"] = "mock:invalid_schema"
+					callback.call(mock_out)
+				return
+			out["source"] = "llm-react"
+			memory.push_back({
+				"round": int(ctx.get("round", 3)),
+				"action": String(out.get("action_type", "")),
+				"target": String(out.get("target_country", "")),
+				"player_stance": String(ctx.get("player_stance", "")),
+				"is_reaction": true
+			})
+			if memory.size() > MEMORY_MAX:
+				memory.pop_front()
+			if callback.is_valid():
+				callback.call(out)
+	)
+
+func _build_reaction_prompt(ctx: Dictionary) -> String:
+	var attrs: Dictionary = ctx.get("country_attrs", {})
+	var me: Dictionary = attrs.get(country, {})
+	var rc: Dictionary = ctx.get("reaction_context", {})
+	var audience_country: String = String(rc.get("audience_country", ""))
+	var verdict: String = String(rc.get("verdict", ""))
+	var player_summary: String = String(rc.get("player_summary", ""))
+
+	var role_defs = {
+		"qin": "秦王嬴稷，雄猜之主。核心恐惧=六国合纵。",
+		"zhao": "赵王赵何，犹疑之主。怕独战怕激秦。",
+		"qi": "齐王田地，渔利之主。谁给的多帮谁。"
+	}
+	var actions_defs = {
+		"qin": "pressure|alienate|lure|prepare",
+		"zhao": "seek_alliance|prepare|probe|observation",
+		"qi": "observation|wait_price|hijack|self_protect"
+	}
+	var others: Array = []
+	for c in ["qin", "zhao", "qi"]:
+		if c != country:
+			var a = attrs.get(c, {})
+			others.append("%s(国威%d/盟信%d/战心%d)" % [_country_name(c), int(a.get("guowei",0)), int(a.get("mengxin",0)), int(a.get("zhanxin",0))])
+
+	# 最近 5 条 recent_actions 里非本人 action_type 的作为"最近他人动向"
+	var recent_lines: Array = []
+	var hist: Array = ctx.get("opponents_history", [])
+	for i in range(max(0, hist.size() - 5), hist.size()):
+		var h: Dictionary = hist[i]
+		var actor_c: String = String(h.get("actor", ""))
+		if actor_c == country or actor_c == "":
+			continue
+		recent_lines.append("- %s：%s" % [_country_name(actor_c), String(h.get("narrative", ""))])
+
+	var lines: Array = [
+		"# 世界铁律：只有秦、赵、齐三国。target_country 只能是 qin/zhao/qi。",
+		"",
+		"# 你是",
+		role_defs.get(country, ""),
+		"",
+		"# 刚发生的事",
+		"纵横家在%s面前进言，%s：「%s」" % [_country_name(audience_country), ("被采纳" if verdict == "accept" else "被拒绝"), player_summary],
+		"你听说了这件事。",
+		"",
+		"# 最近他人动向",
+		("\n".join(recent_lines) if recent_lines.size() > 0 else "（暂无）"),
+		"",
+		"# 当前局势",
+		"你的三维：国威%d 盟信%d 战心%d" % [int(me.get("guowei",0)), int(me.get("mengxin",0)), int(me.get("zhanxin",0))],
+		"其他国：%s" % ", ".join(others),
+		"",
+		"# 你可用的动作",
+		actions_defs.get(country, ""),
+		"",
+		"# 决策规则",
+		"基于你的性格，对刚发生的面谈事件做出**一个**回应动作。",
+		"- 如果面谈事件对你有利：稳住或扩大战果",
+		"- 如果对你不利：破坏、离间、备战、观望，视性格而定",
+		"- reason 必须以\"基于我...\"开头引用你的性格",
+		"",
+		"# 输出（严格 JSON）",
+		"{",
+		'  "target_country": "qin"|"zhao"|"qi",',
+		'  "action_type": <上表 action id>,',
+		'  "reason": "≤ 40 字，以「基于我...」开头",',
+		'  "narrative": "≤ 40 字第三人称描述",',
+		'  "settle_hint": "summon"|"decided",',
+		'  "confidence": 1-10',
+		"}"
+	]
+	return "\n".join(lines)
+
+func _mock_reaction(ctx: Dictionary) -> Dictionary:
+	# 反应轮 mock：直接调 pick_action，让它基于当前状态选一个
+	var out = pick_action(ctx)
+	out["is_reaction"] = true
+	return out
+
 # LLM 接入点：async 调用 DeepSeek，失败/超时/性格偏离回退 mock
 func pick_action_async(ctx: Dictionary, callback: Callable) -> void:
 	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
