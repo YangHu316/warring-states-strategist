@@ -277,7 +277,13 @@ func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audien
 			var success: bool = _resolve_card_play(c, idx, dir, target, intel_indices)
 			if is_active_audience:
 				if success:
-					_open_dialogue(audience_country, "active")
+					var was_decided: bool = false
+					if typeof(AgentManager) == TYPE_OBJECT:
+						was_decided = AgentManager.is_country_decided(audience_country)
+						if was_decided and AgentManager.has_method("challenge_decided"):
+							AgentManager.challenge_decided(audience_country)
+					var mode2: String = "summon" if was_decided else "active"
+					_open_dialogue(audience_country, mode2)
 				else:
 					push_event("[你] 请见%s不成——名望已扣" % _country_name(audience_country))
 		)
@@ -532,21 +538,10 @@ func _pop_decided_modal(country: String) -> void:
 	bcl.pressed.connect(func(): layer.queue_free())
 	bch.pressed.connect(func():
 		layer.queue_free()
-		# 挑战成功率 = 40 + 名望 × 0.3（同游说牌）
-		var mw: int = int(State.player_attrs.get("mingwang", 0))
-		var rate: int = clampi(40 + int(round(float(mw) * 0.3)), 5, 95)
-		var r: int = randi() % 100
-		if r < rate:
-			# 挑战成功：该国从 decided → summon
-			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("challenge_decided"):
-				AgentManager.challenge_decided(country)
-			push_event("[你] 对%s挑战成功（%d%%），可召见" % [_country_name(country), rate])
-		else:
-			State.apply_player_delta({"mingwang": -3})
-			push_event("[你] 对%s挑战失败（%d%%），名望 -3" % [_country_name(country), rate])
-		_update_country_status_labels()
-		_refresh_top_bar()
-		_check_death_and_react()
+		if State.action_hand.is_empty():
+			push_event("[你] 手中无牌，无法挑战 %s" % _country_name(country))
+			return
+		_pop_active_audience_picker(country)
 	)
 
 func _on_agent_action(country: String, action: Dictionary) -> void:

@@ -11,6 +11,9 @@ var _submitted: bool = false
 var _proposed_action: String = ""
 var _monarch_opening: String = ""
 var _presets_ready: bool = false
+var _stance_a: String = ""
+var _stance_b: String = ""
+var _stance_c: String = ""
 
 @onready var top_label: Label = $UILayer/Root/VBox/TopLabel
 @onready var name_label: Label = $UILayer/Root/VBox/NameLabel
@@ -39,9 +42,9 @@ func _ready() -> void:
 	advisor_btn.pressed.connect(_on_advisor_rewrite)
 	advisor_confirm_btn.pressed.connect(_on_advisor_confirm)
 	advisor_reject_btn.pressed.connect(_on_advisor_reject)
-	preset_a_btn.pressed.connect(func(): _on_preset("推合纵"))
-	preset_b_btn.pressed.connect(func(): _on_preset("中立"))
-	preset_c_btn.pressed.connect(func(): _on_preset("推亲秦"))
+	preset_a_btn.pressed.connect(func(): _on_preset("推合纵", _stance_a))
+	preset_b_btn.pressed.connect(func(): _on_preset("中立", _stance_b))
+	preset_c_btn.pressed.connect(func(): _on_preset("推亲秦", _stance_c))
 	others_btn.pressed.connect(_on_others)
 	preset_a_btn.disabled = true
 	preset_b_btn.disabled = true
@@ -91,15 +94,27 @@ func _request_monarch_proposal() -> void:
 				return
 			var opening: String = String((parsed as Dictionary).get("opening", ""))
 			var proposed: String = String((parsed as Dictionary).get("proposed_action", ""))
+			var opts_var: Variant = (parsed as Dictionary).get("stance_options", null)
 			if opening == "" or proposed == "":
 				_use_fallback_proposal()
 				return
 			_monarch_opening = opening
 			_proposed_action = proposed
 			monarch_speech.text = opening
-			preset_a_btn.text = "A. 推合纵 —— 联齐赵抗秦"
-			preset_b_btn.text = "B. 中立 —— 请大王自决"
-			preset_c_btn.text = "C. 推亲秦 —— 与秦交好"
+			if typeof(opts_var) == TYPE_DICTIONARY:
+				var opts: Dictionary = opts_var
+				_stance_a = String(opts.get("hezong", ""))
+				_stance_b = String(opts.get("neutral", ""))
+				_stance_c = String(opts.get("qin", ""))
+			if _stance_a == "":
+				_stance_a = "臣以为当联齐赵以御秦，共举合纵之旗。"
+			if _stance_b == "":
+				_stance_b = "臣不敢妄决，请大王依己意而行。"
+			if _stance_c == "":
+				_stance_c = "臣以为当以秦为主，权变而行连横。"
+			preset_a_btn.text = "A. 推合纵：" + _stance_a
+			preset_b_btn.text = "B. 中立：" + _stance_b
+			preset_c_btn.text = "C. 推亲秦：" + _stance_c
 			_presets_ready = true
 			preset_a_btn.disabled = false
 			preset_b_btn.disabled = false
@@ -108,20 +123,39 @@ func _request_monarch_proposal() -> void:
 	)
 
 func _use_fallback_proposal() -> void:
-	var mock: Dictionary = State.monarch_mock.get(country, {})
-	var lines: Array = mock.get("audience", [])
 	var default_actions: Dictionary = {
-		"qin": {"opening": "赵齐动向不明，寡人有意备战蓄力，以待时变。足下以为何如？", "action": "prepare"},
-		"zhao": {"opening": "秦势逼人，孤欲联齐求盟以为犄角。先生以为可行否？", "action": "seek_alliance"},
-		"qi": {"opening": "秦赵相持，寡人思观望渔利，先生以为妥当否？", "action": "observation"}
+		"qin": {
+			"opening": "赵齐动向不明，寡人有意备战蓄力，以待时变。足下以为何如？",
+			"action": "prepare",
+			"stance_a": "臣愚以为大王当缓东出之计，避六国之疑，方为长久之策。",
+			"stance_b": "臣不敢妄决，请大王依己意而行，静观其变可也。",
+			"stance_c": "臣以为大王备战正是时候，来日东出必成千秋伟业。"
+		},
+		"zhao": {
+			"opening": "秦势逼人，孤欲联齐求盟以为犄角。先生以为可行否？",
+			"action": "seek_alliance",
+			"stance_a": "臣以为联齐乃赵之生路，大王当速遣使入齐，共举合纵。",
+			"stance_b": "臣愚未敢妄断，请大王察齐之诚意再决不迟。",
+			"stance_c": "臣以为齐不足恃，不如与秦交好，以求偏安一时。"
+		},
+		"qi": {
+			"opening": "秦赵相持，寡人思观望渔利，先生以为妥当否？",
+			"action": "observation",
+			"stance_a": "臣以为齐当挺身联赵，共抗秦之东出，方为大义。",
+			"stance_b": "臣以为大王待价而沽，坐观秦赵相争，最为稳妥。",
+			"stance_c": "臣以为齐当受秦之利，倒向连横，可保富庶不失。"
+		}
 	}
 	var fb: Dictionary = default_actions.get(country, default_actions["qin"])
 	_monarch_opening = String(fb["opening"])
 	_proposed_action = String(fb["action"])
+	_stance_a = String(fb["stance_a"])
+	_stance_b = String(fb["stance_b"])
+	_stance_c = String(fb["stance_c"])
 	monarch_speech.text = _monarch_opening
-	preset_a_btn.text = "A. 推合纵 —— 联齐赵抗秦"
-	preset_b_btn.text = "B. 中立 —— 请大王自决"
-	preset_c_btn.text = "C. 推亲秦 —— 与秦交好"
+	preset_a_btn.text = "A. 推合纵：" + _stance_a
+	preset_b_btn.text = "B. 中立：" + _stance_b
+	preset_c_btn.text = "C. 推亲秦：" + _stance_c
 	_presets_ready = true
 	preset_a_btn.disabled = false
 	preset_b_btn.disabled = false
@@ -136,13 +170,31 @@ func _build_proposal_prompt() -> String:
 		"qi": "观望渔利 observation / 待价而沽 wait_price / 趁火打劫 hijack / 闭门自保 self_protect"
 	}
 	var attrs: Dictionary = State.country_attrs.get(country, {})
+	var stance_hints: Dictionary = {
+		"qin": {
+			"hezong": "在秦王面前提合纵——极其危险，但纵横家可婉言暗劝秦王缓东出、待时机（不能直接说抗秦）",
+			"neutral": "劝秦王暂观其变，不做定论",
+			"qin": "力主秦当东出，为秦王背书连横之计"
+		},
+		"zhao": {
+			"hezong": "力主赵联齐抗秦，直言合纵为唯一出路",
+			"neutral": "劝赵王暂缓表态，观秦齐之动",
+			"qin": "劝赵王与秦交好，避免与秦为敌"
+		},
+		"qi": {
+			"hezong": "劝齐王联赵抗秦，不宜观望渔利",
+			"neutral": "支持齐王待价而沽、坐山观虎斗",
+			"qin": "劝齐王倒向秦，接受连横之利"
+		}
+	}
+	var sh: Dictionary = stance_hints.get(country, stance_hints["zhao"])
 	var lines: Array = [
 		"# 世界铁律",
 		"这个世界只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
 		"",
 		"# 你是",
 		String(monarch_names.get(country, country)),
-		"你现在召见了纵横家，正准备向他抛出你眼下的困局，并征询他的立场（推合纵/中立/推亲秦）。",
+		"你现在召见了纵横家，抛出困局，征询他的天下立场（推合纵/中立/推亲秦）。",
 		"",
 		"# 局势",
 		"你的三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
@@ -152,16 +204,21 @@ func _build_proposal_prompt() -> String:
 		String(actions_defs.get(country, "")),
 		"",
 		"# 任务",
-		"1. 从上表选一个你倾向采取的行动 proposed_action（用英文 id，如 pressure / alienate / lure / prepare / seek_alliance / probe / observation / wait_price / hijack / self_protect）。",
-		"2. 用文言写一段 ≤ 80 字的开场 opening：先简述你正在博弈的僵局，说出你想采取的行动意图，最后用一句问句征询纵横家（如'足下以为如何'）。",
+		"1. `proposed_action`：从上表选一个你倾向采取的行动（英文 id）。",
+		"2. `opening`：≤ 80 字文言开场——简述博弈 + 提出行动意图 + 一句问句征询纵横家立场。",
+		"3. `stance_options`：为纵横家生成 3 个**完整文言表态句**（每条 30-60 字，不是短标签），对应三种立场：",
+		"   - `hezong`（推合纵）：%s" % String(sh["hezong"]),
+		"   - `neutral`（中立）：%s" % String(sh["neutral"]),
+		"   - `qin`（推亲秦）：%s" % String(sh["qin"]),
+		"   **重要**：3 条表态必须**符合当前君主人设**、**符合当前局势**、用文言、以'臣'自称、有礼节。",
 		"",
 		"# 输出（严格 JSON，无多余文字）：",
-		'{"opening": "...", "proposed_action": "..."}'
+		'{"opening": "...", "proposed_action": "...", "stance_options": {"hezong": "...", "neutral": "...", "qin": "..."}}'
 	]
 	return "\n".join(lines)
 
 # === 玩家表态 ===
-func _on_preset(stance: String) -> void:
+func _on_preset(_stance_label: String, stance_text: String) -> void:
 	if _submitted or not _presets_ready:
 		return
 	_submitted = true
@@ -169,10 +226,10 @@ func _on_preset(stance: String) -> void:
 	preset_b_btn.disabled = true
 	preset_c_btn.disabled = true
 	others_btn.disabled = true
-	input_box.text = stance
+	input_box.text = stance_text
 	input_box.visible = true
 	input_box.editable = false
-	_send_to_verdict(stance)
+	_send_to_verdict(stance_text)
 
 func _on_others() -> void:
 	if _submitted:
@@ -350,11 +407,11 @@ func _apply_stance(stance: String, resolved: bool, response_text: String, player
 	])
 	var color: Color
 	if stance == "推合纵":
-		color = Color(0.6, 1, 0.6)
+		color = Color(0.3, 0.85, 0.3)
 	elif stance == "推亲秦":
-		color = Color(1, 0.75, 0.5)
+		color = Color(1, 0.55, 0.2)
 	else:
-		color = Color(0.9, 0.9, 0.7)
+		color = Color(1, 0.75, 0.15)
 	result_label.text = "你: %s | 提议 %s → %s\n君主：%s\n%s" % [
 		stance, _proposed_action, ("生效" if resolved else "搁置"), response_text, deltas_note
 	]
