@@ -91,6 +91,113 @@ func pick_action(ctx: Dictionary) -> Dictionary:
 		memory.pop_front()
 	return out
 
+# v7.3.5 反应轮：面谈后其他君主的性格化响应（群体智能）
+func pick_reaction_async(ctx: Dictionary, callback: Callable) -> void:
+	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
+	if llm == null or not llm.is_ready():
+		if callback.is_valid():
+			var mock_out = pick_action(ctx)
+			mock_out["source"] = "mock:no_llm"
+			callback.call(mock_out)
+		return
+	var prompt: String = _build_reaction_prompt(ctx)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 10.0, "temperature": 0.85, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				if callback.is_valid():
+					var mock_out = pick_action(ctx)
+					mock_out["source"] = "mock:%s" % err
+					callback.call(mock_out)
+				return
+			var out = _validate_llm_action(parsed, ctx)
+			if out.is_empty():
+				if callback.is_valid():
+					var mock_out = pick_action(ctx)
+					mock_out["source"] = "mock:invalid_schema"
+					callback.call(mock_out)
+				return
+			out["source"] = "llm-react"
+			memory.push_back({
+				"round": int(ctx.get("round", 3)),
+				"action": String(out.get("action_type", "")),
+				"target": String(out.get("target_country", "")),
+				"player_stance": String(ctx.get("player_stance", "")),
+				"is_reaction": true
+			})
+			if memory.size() > MEMORY_MAX:
+				memory.pop_front()
+			if callback.is_valid():
+				callback.call(out)
+	)
+
+func _build_reaction_prompt(ctx: Dictionary) -> String:
+	var attrs: Dictionary = ctx.get("country_attrs", {})
+	var me: Dictionary = attrs.get(country, {})
+	var rc: Dictionary = ctx.get("reaction_context", {})
+	var audience_country: String = String(rc.get("audience_country", ""))
+	var verdict: String = String(rc.get("verdict", ""))
+	var player_summary: String = String(rc.get("player_summary", ""))
+
+	var role_defs = {
+		"qin": "秦王嬴稷，雄猜之主。核心恐惧=六国合纵。",
+		"zhao": "赵王赵何，犹疑之主。怕独战怕激秦。",
+		"qi": "齐王田地，渔利之主。谁给的多帮谁。"
+	}
+	var actions_defs = {
+		"qin": "pressure|alienate|lure|prepare",
+		"zhao": "seek_alliance|prepare|probe|observation",
+		"qi": "observation|wait_price|hijack|self_protect"
+	}
+	var others: Array = []
+	for c in ["qin", "zhao", "qi"]:
+		if c != country:
+			var a = attrs.get(c, {})
+			others.append("%s(国威%d/盟信%d/战心%d)" % [_country_name(c), int(a.get("guowei",0)), int(a.get("mengxin",0)), int(a.get("zhanxin",0))])
+
+	var recent_lines: Array = []
+	var hist: Array = ctx.get("opponents_history", [])
+	for i in range(max(0, hist.size() - 5), hist.size()):
+		var h: Dictionary = hist[i]
+		var actor_c: String = String(h.get("actor", ""))
+		if actor_c == country or actor_c == "":
+			continue
+		recent_lines.append("- %s：%s" % [_country_name(actor_c), String(h.get("narrative", ""))])
+
+	var lines: Array = [
+		"# 世界铁律：只有秦、赵、齐三国。target_country 只能是 qin/zhao/qi。",
+		"",
+		"# 你是",
+		role_defs.get(country, ""),
+		"",
+		"# 刚发生的事",
+		"纵横家面见%s，表态：%s（%s）" % [_country_name(audience_country), player_summary, verdict],
+		"你听说了这件事。",
+		"",
+		"# 最近他人动向",
+		("\n".join(recent_lines) if recent_lines.size() > 0 else "（暂无）"),
+		"",
+		"# 当前局势",
+		"你的三维：国威%d 盟信%d 战心%d" % [int(me.get("guowei",0)), int(me.get("mengxin",0)), int(me.get("zhanxin",0))],
+		"其他国：%s" % ", ".join(others),
+		"",
+		"# 你可用的动作",
+		actions_defs.get(country, ""),
+		"",
+		"# 决策规则",
+		"基于你的性格，对刚发生的面谈事件做出**一个**回应动作。reason 必须以\"基于我...\"开头。",
+		"",
+		"# 输出（严格 JSON）",
+		"{",
+		'  "target_country": "qin"|"zhao"|"qi",',
+		'  "action_type": <上表 action id>,',
+		'  "reason": "≤ 40 字，以「基于我...」开头",',
+		'  "narrative": "≤ 40 字第三人称描述",',
+		'  "settle_hint": "summon"|"decided",',
+		'  "confidence": 1-10',
+		"}"
+	]
+	return "\n".join(lines)
+
 # LLM 接入点：async 调用 DeepSeek，失败/超时/性格偏离回退 mock
 func pick_action_async(ctx: Dictionary, callback: Callable) -> void:
 	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")

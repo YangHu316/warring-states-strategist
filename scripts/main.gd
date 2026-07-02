@@ -284,7 +284,7 @@ func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audien
 
 func _resolve_card_play(c: Card, idx: int, direction: String, target: String, intel_indices: Array = []) -> bool:
 	var arb = get_node("/root/Arbiter")
-	var intel_bonus: int = intel_indices.size() * 5
+	var intel_bonus: int = intel_indices.size() * State.INTEL_BONUS_PER_CARD
 	var res: Dictionary = arb.roll_card(c.id, direction, target, intel_bonus)
 	var success: bool = bool(res.get("success", false))
 	var dp: Dictionary = res.get("deltas_player", {})
@@ -307,9 +307,9 @@ func _resolve_card_play(c: Card, idx: int, direction: String, target: String, in
 	var msg: String = "[你] %s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
 	push_event(msg)
 	if success:
-		var placeholder: String = "[情报·%s] %s%s成功——待下回合入手" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
-		var idx_placeholder: int = State.pending_intel.size()
-		State.pending_intel.append(placeholder)
+		var placeholder: String = "[情报·%s] %s%s成功" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
+		var idx_placeholder: int = State.intel_hand.size()
+		State.intel_hand.append(placeholder)
 		_request_intel_narration(idx_placeholder, c, direction, target)
 	_refresh_hand_ui()
 	_refresh_top_bar()
@@ -355,9 +355,9 @@ func _request_intel_narration(intel_idx: int, c: Card, direction: String, target
 			var narrative: String = String((parsed as Dictionary).get("intel", ""))
 			if narrative == "":
 				return
-			if intel_idx < 0 or intel_idx >= State.pending_intel.size():
+			if intel_idx < 0 or intel_idx >= State.intel_hand.size():
 				return
-			State.pending_intel[intel_idx] = "[情报·%s] %s" % [_country_name(target), narrative]
+			State.intel_hand[intel_idx] = "[情报·%s] %s" % [_country_name(target), narrative]
 			_refresh_hand_ui()
 	)
 
@@ -468,6 +468,12 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 	get_tree().root.add_child(d)
 	if d.has_method("setup"):
 		d.setup(country, _current_event_text, mode)
+	if d.has_signal("audience_settled"):
+		d.audience_settled.connect(func(country2: String, verdict: String, _player_text: String, summary: String):
+			push_event("[反应] 三国听闻%s面谈结果，各有动作……" % _country_name(country2))
+			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("trigger_reaction_round"):
+				AgentManager.trigger_reaction_round(country2, verdict, summary)
+		)
 	if d.has_signal("dialogue_finished"):
 		d.dialogue_finished.connect(func(country2: String, _verdict: String):
 			if d != null and is_instance_valid(d):
@@ -644,10 +650,6 @@ func _proceed_to_next_turn() -> void:
 	if typeof(AgentManager) == TYPE_OBJECT:
 		AgentManager.reset()
 	State.country_states = {"qin": "idle", "zhao": "idle", "qi": "idle"}
-	if State.pending_intel.size() > 0:
-		for it in State.pending_intel:
-			State.intel_hand.append(it)
-		State.pending_intel.clear()
 	if State.current_round >= State.max_round:
 		var arb = get_node("/root/Arbiter")
 		var res: Dictionary = arb.check_ending()

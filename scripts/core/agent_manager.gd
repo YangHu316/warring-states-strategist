@@ -244,6 +244,69 @@ func challenge_decided(country: String) -> void:
 		country_state[country] = "summon"
 		emit_signal("country_finished", country, "summon")
 
+# v7.3.5 面谈反应轮（群体智能）：面谈国已表态 → 另 2 国链式反应
+func trigger_reaction_round(audience_country: String, verdict: String, player_summary: String) -> void:
+	var others: Array = []
+	for c in COUNTRIES:
+		if c != audience_country:
+			others.append(c)
+	if others.size() < 2:
+		return
+	if randi() % 2 == 1:
+		var tmp = others[0]
+		others[0] = others[1]
+		others[1] = tmp
+	recent_actions.append({
+		"actor": audience_country,
+		"target_country": "",
+		"action_type": "audience_" + verdict,
+		"round": 0,
+		"narrative": "纵横家面见%s：%s（%s）" % [_country_name_short(audience_country), player_summary, verdict]
+	})
+	if recent_actions.size() > 12:
+		recent_actions.pop_front()
+	_react_step(others[0], others[1], audience_country, verdict, player_summary)
+
+func _react_step(current: String, next_country: String, audience_country: String, verdict: String, player_summary: String) -> void:
+	var ai = ais.get(current, null)
+	if ai == null:
+		if next_country != "":
+			_react_step(next_country, "", audience_country, verdict, player_summary)
+		return
+	var ctx: Dictionary = {
+		"round": 3,
+		"key_event_tag": key_event_tag,
+		"key_event_text": key_event_text,
+		"country_attrs": State.country_attrs,
+		"player_attrs": State.player_attrs,
+		"player_stance": player_stance,
+		"opponents_history": recent_actions.duplicate(),
+		"me_last_action": country_last_action.get(current, {}),
+		"reaction_context": {
+			"audience_country": audience_country,
+			"verdict": verdict,
+			"player_summary": player_summary
+		}
+	}
+	if ai.has_method("pick_reaction_async"):
+		ai.pick_reaction_async(ctx, func(action: Dictionary):
+			_apply_action(current, 3, action)
+			if next_country != "":
+				_react_step(next_country, "", audience_country, verdict, player_summary)
+		)
+	else:
+		var action: Dictionary = ai.pick_action(ctx)
+		_apply_action(current, 3, action)
+		if next_country != "":
+			_react_step(next_country, "", audience_country, verdict, player_summary)
+
+func _country_name_short(c: String) -> String:
+	match c:
+		"qin": return "秦"
+		"zhao": return "赵"
+		"qi": return "齐"
+		_: return c
+
 # 生成召见前情摘要：本回合三国 R1/R2 关键动作，供 dialogue 显示
 func get_audience_briefing() -> String:
 	if recent_actions.is_empty():
