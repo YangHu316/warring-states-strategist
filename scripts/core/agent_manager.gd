@@ -14,6 +14,7 @@ const MonarchAIScript = preload("res://scripts/core/monarch_ai.gd")
 signal agent_action(country: String, action: Dictionary)   # 单个 agent 动作（含 narrative/reason/deltas）
 signal country_finished(country: String, settle: String)    # summon / decided
 signal all_finished()
+signal chat_message(country: String, target: String, text: String)  # 聊天室发言
 
 const COUNTRIES: Array = ["qin", "zhao", "qi"]
 
@@ -33,6 +34,12 @@ var _round_timer: Timer = null
 var _pending_r2: bool = false
 var _pending_step_count: int = 0
 
+# 聊天室（v7.3.8）
+var _chat_timer: Timer = null
+var chat_history: Array = []   # 最近 N 条聊天消息 [{country, target, text}]
+const CHAT_INTERVAL_SEC: float = 20.0
+const CHAT_HISTORY_MAX: int = 20
+
 func _ready() -> void:
 	ais["qin"] = MonarchAIScript.make("qin")
 	ais["zhao"] = MonarchAIScript.make("zhao")
@@ -41,6 +48,10 @@ func _ready() -> void:
 	_round_timer.one_shot = true
 	add_child(_round_timer)
 	_round_timer.timeout.connect(_on_round_timer)
+	_chat_timer = Timer.new()
+	_chat_timer.one_shot = true
+	add_child(_chat_timer)
+	_chat_timer.timeout.connect(_on_chat_timer)
 
 # === 生命周期 ===
 func start_free_phase(event_tag: String = "", event_text: String = "") -> void:
@@ -49,6 +60,7 @@ func start_free_phase(event_tag: String = "", event_text: String = "") -> void:
 	active = true
 	player_stance = ""
 	recent_actions.clear()
+	chat_history.clear()
 	for c in COUNTRIES:
 		country_round[c] = 0
 		country_state[c] = "running"
@@ -56,6 +68,9 @@ func start_free_phase(event_tag: String = "", event_text: String = "") -> void:
 	_pending_r2 = false
 	_round_timer.wait_time = 1.0
 	_round_timer.start()
+	# 聊天室：+8s 首条，之后每 20s 一条
+	_chat_timer.wait_time = 8.0
+	_chat_timer.start()
 
 func reset() -> void:
 	active = false
@@ -63,6 +78,7 @@ func reset() -> void:
 	country_state.clear()
 	country_last_action.clear()
 	recent_actions.clear()
+	chat_history.clear()
 	player_stance = ""
 	_pending_r2 = false
 	for c in COUNTRIES:
@@ -71,6 +87,8 @@ func reset() -> void:
 			ai.reset_run_state()
 	if _round_timer != null and _round_timer.time_left > 0:
 		_round_timer.stop()
+	if _chat_timer != null and _chat_timer.time_left > 0:
+		_chat_timer.stop()
 
 # === 玩家打牌回调 ===
 # direction: "push_hezong"/"push_qin"/"neutral"/"favor_hezong"/"favor_lianheng" 等
@@ -333,3 +351,50 @@ func get_audience_briefing() -> String:
 				s += "（%s）" % reason
 			lines.append(s)
 	return "\n".join(lines)
+
+# === 聊天室（v7.3.8） ===
+func _on_chat_timer() -> void:
+	if not active:
+		return
+	# 随机选一个君主发言
+	var speaker: String = COUNTRIES[randi() % COUNTRIES.size()]
+	var ai = ais.get(speaker, null)
+	if ai == null or not ai.has_method("chat_speak_async"):
+		_schedule_next_chat()
+		return
+	var ctx: Dictionary = {
+		"key_event_tag": key_event_tag,
+		"key_event_text": key_event_text,
+		"country_attrs": State.country_attrs,
+		"player_stance": player_stance,
+		"chat_history": chat_history.duplicate(),
+		"recent_actions": recent_actions.duplicate()
+	}
+	ai.chat_speak_async(ctx, func(msg: Dictionary):
+		if not active:
+			return
+		var target: String = String(msg.get("target", ""))
+		var text: String = String(msg.get("text", ""))
+		if text != "":
+			var entry: Dictionary = {"country": speaker, "target": target, "text": text}
+			chat_history.append(entry)
+			if chat_history.size() > CHAT_HISTORY_MAX:
+				chat_history.pop_front()
+			# 也塞一条到 recent_actions 供 R1/R2 决策看到
+			recent_actions.append({
+				"actor": speaker, "target_country": target,
+				"action_type": "chat", "round": 0,
+				"narrative": "[朝议] " + text
+			})
+			if recent_actions.size() > 12:
+				recent_actions.pop_front()
+			emit_signal("chat_message", speaker, target, text)
+		_schedule_next_chat()
+	)
+
+func _schedule_next_chat() -> void:
+	if not active:
+		return
+	if _chat_timer != null and _chat_timer.time_left <= 0:
+		_chat_timer.wait_time = CHAT_INTERVAL_SEC
+		_chat_timer.start()

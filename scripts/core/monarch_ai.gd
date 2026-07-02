@@ -626,3 +626,103 @@ static func _country_name(c: String) -> String:
 		"zhao": return "赵"
 		"qi": return "齐"
 		_: return c
+
+# === 三国朝议聊天室（v7.3.8） ===
+# ctx = {key_event_tag, key_event_text, country_attrs, player_stance, chat_history, recent_actions}
+# callback(msg: Dictionary { target: String, text: String })
+func chat_speak_async(ctx: Dictionary, callback: Callable) -> void:
+	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
+	if llm == null or not llm.is_ready():
+		if callback.is_valid():
+			callback.call(_mock_chat(ctx))
+		return
+	var prompt: String = _build_chat_prompt(ctx)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 8.0, "temperature": 0.9, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				if callback.is_valid():
+					callback.call(_mock_chat(ctx))
+				return
+			var target: String = String((parsed as Dictionary).get("target", ""))
+			var text: String = String((parsed as Dictionary).get("text", ""))
+			if not (target in ["qin", "zhao", "qi", "all", ""]):
+				target = ""
+			if text == "":
+				callback.call(_mock_chat(ctx))
+				return
+			if callback.is_valid():
+				callback.call({"target": target, "text": text})
+	)
+
+func _build_chat_prompt(ctx: Dictionary) -> String:
+	var role_defs = {
+		"qin": "秦王嬴稷（雄猜多疑，欲东出灭六国）",
+		"zhao": "赵王赵何（犹疑谨慎，欲联齐抗秦又怕拖累）",
+		"qi": "齐王田地（精明渔利，喜观望，谁给的多帮谁）"
+	}
+	var attrs: Dictionary = ctx.get("country_attrs", {})
+	var others_attrs: Array = []
+	for c in ["qin", "zhao", "qi"]:
+		var a: Dictionary = attrs.get(c, {})
+		others_attrs.append("%s(国威%d/盟信%d/战心%d)" % [_country_name(c), int(a.get("guowei",0)), int(a.get("mengxin",0)), int(a.get("zhanxin",0))])
+
+	var chat_lines: Array = []
+	var hist: Array = ctx.get("chat_history", [])
+	for i in range(max(0, hist.size() - 5), hist.size()):
+		var h: Dictionary = hist[i]
+		var actor_c: String = String(h.get("country", ""))
+		var target_c: String = String(h.get("target", ""))
+		var text: String = String(h.get("text", ""))
+		var to_str: String = ""
+		if target_c != "" and target_c != "all":
+			to_str = " → " + _country_name(target_c)
+		chat_lines.append("%s%s：%s" % [_country_name(actor_c), to_str, text])
+
+	var lines: Array = [
+		"# 世界铁律：只有秦、赵、齐三国。你只能提及秦赵齐 + 张仪魏冉平原君廉颇孟尝君。",
+		"",
+		"# 你是",
+		String(role_defs.get(country, country)),
+		"你正在与另外两位君主进行朝议（远程通信/使者往来），围绕当前局势相互放话、试探、施压。",
+		"",
+		"# 局势",
+		"三国：%s" % ", ".join(others_attrs),
+		"关键事件：%s" % String(ctx.get("key_event_text", "")),
+		"纵横家立场：%s" % String(ctx.get("player_stance", "")),
+		"",
+		"# 最近朝议记录",
+		("\n".join(chat_lines) if chat_lines.size() > 0 else "（尚无发言）"),
+		"",
+		"# 任务",
+		"用文言写一句 ≤ 40 字的**朝议发言**——可以是威胁、示好、试探、嘲讽、宣告立场等。",
+		"要求：",
+		"- 严格符合你的性格（雄猜/犹疑/渔利）",
+		"- 若有历史发言，可回应或反驳前一条",
+		"- 目标 target ∈ {qin, zhao, qi, all}——'all' 表示对所有国广播",
+		"- 不重复历史内容，说些新话",
+		"",
+		"# 输出（严格 JSON）：",
+		'{"target": "qin"|"zhao"|"qi"|"all", "text": "≤40 字文言发言"}'
+	]
+	return "\n".join(lines)
+
+func _mock_chat(ctx: Dictionary) -> Dictionary:
+	var pool: Dictionary = {
+		"qin": [
+			{"target": "zhao", "text": "赵若不识时务，寡人铁骑将至邯郸城下。"},
+			{"target": "qi", "text": "齐王之富庶，寡人素来敬慕。三城之约，可作真乎？"},
+			{"target": "all", "text": "东出乃大势，六国合纵不过一纸空文。"}
+		],
+		"zhao": [
+			{"target": "qi", "text": "齐王，赵齐唇齿相依，唯合纵可保东方。"},
+			{"target": "qin", "text": "秦欲蚕食六国，孤宁独战，亦不奉秦。"},
+			{"target": "all", "text": "廉颇言：赵人只知一战，不知投降二字。"}
+		],
+		"qi": [
+			{"target": "all", "text": "孤只知渔利，秦赵之争与齐何干？"},
+			{"target": "qin", "text": "秦王之礼，孤已收下。合纵之议，容后再议。"},
+			{"target": "zhao", "text": "赵若真心求盟，需先示以诚意。"}
+		]
+	}
+	var arr: Array = pool.get(country, [{"target": "all", "text": "……"}])
+	return arr[randi() % arr.size()]

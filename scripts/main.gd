@@ -9,6 +9,10 @@ extends Node2D
 @onready var event_stream_panel: PanelContainer = $UILayer/EventStreamPanel
 @onready var event_stream_toggle: Button = $UILayer/EventStreamPanel/VBox/TitleBar/EventStreamToggle
 @onready var event_stream_scroll: ScrollContainer = $UILayer/EventStreamPanel/VBox/EventStreamScroll
+@onready var chatroom_panel: PanelContainer = $UILayer/ChatRoomPanel
+@onready var chatroom_toggle: Button = $UILayer/ChatRoomPanel/VBox/ChatToggle
+@onready var chatroom_scroll: ScrollContainer = $UILayer/ChatRoomPanel/VBox/ChatScroll
+@onready var chatroom_log: RichTextLabel = $UILayer/ChatRoomPanel/VBox/ChatScroll/ChatLog
 @onready var action_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/ActionPanel/ActionCardsHBox
 @onready var intel_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/IntelPanel/IntelScroll/IntelCardsHBox
 @onready var next_turn_button: Button = $UILayer/ActionButtonsVBox/NextTurnButton
@@ -77,6 +81,7 @@ func _ready() -> void:
 	dump_button.pressed.connect(_on_dump_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	event_stream_toggle.pressed.connect(_toggle_event_panel)
+	chatroom_toggle.pressed.connect(_toggle_chatroom_panel)
 
 	# 点击地图节点 — 采用 input_event
 	area_qin.input_event.connect(func(_v, ev, _s): _on_node_click_event("qin", ev))
@@ -88,6 +93,8 @@ func _ready() -> void:
 		AgentManager.agent_action.connect(_on_agent_action)
 		AgentManager.country_finished.connect(_on_country_finished)
 		AgentManager.all_finished.connect(_on_all_finished)
+		if AgentManager.has_signal("chat_message"):
+			AgentManager.chat_message.connect(_on_chat_message)
 
 	# State 信号
 	if typeof(State) == TYPE_OBJECT:
@@ -753,6 +760,29 @@ static func _country_name(c: String) -> String:
 		"zhao": return "赵"
 		"qi": return "齐"
 		_: return c
+
+# === 三国朝议聊天室（v7.3.8） ===
+var _chatroom_expanded: bool = false
+
+func _on_chat_message(country: String, target: String, text: String) -> void:
+	if chatroom_log == null:
+		return
+	var color_map := {"qin": "#ff9060", "zhao": "#66d0ff", "qi": "#a0ff90"}
+	var color: String = String(color_map.get(country, "#dddddd"))
+	var to_str: String = ""
+	if target != "" and target != "all":
+		to_str = " → " + _country_name(target)
+	else:
+		to_str = "（对众）"
+	chatroom_log.append_text("[color=%s][%s%s][/color] %s\n" % [color, _country_name(country), to_str, text])
+
+func _toggle_chatroom_panel() -> void:
+	_chatroom_expanded = not _chatroom_expanded
+	chatroom_scroll.visible = _chatroom_expanded
+	if _chatroom_expanded:
+		chatroom_toggle.text = "▼ 三国朝议（点击收起）"
+	else:
+		chatroom_toggle.text = "▶ 三国朝议（点击展开）"
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("debug_dump"):

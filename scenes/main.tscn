@@ -207,6 +207,40 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 14
 autowrap_mode = 2
 
+[node name="ChatRoomPanel" type="PanelContainer" parent="UILayer" unique_id=3311001001]
+offset_left = 10.0
+offset_top = 110.0
+offset_right = 340.0
+offset_bottom = 400.0
+
+[node name="VBox" type="VBoxContainer" parent="UILayer/ChatRoomPanel" unique_id=3311001002]
+layout_mode = 2
+theme_override_constants/separation = 0
+
+[node name="ChatToggle" type="Button" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001003]
+layout_mode = 2
+text = "▶ 三国朝议（点击展开）"
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("label_bg_dark")
+theme_override_styles/hover = SubResource("label_bg_dark")
+theme_override_styles/pressed = SubResource("label_bg_dark")
+
+[node name="ChatScroll" type="ScrollContainer" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001004]
+visible = false
+custom_minimum_size = Vector2(0, 220)
+layout_mode = 2
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="ChatLog" type="RichTextLabel" parent="UILayer/ChatRoomPanel/VBox/ChatScroll" unique_id=3311001005]
+custom_minimum_size = Vector2(320, 0)
+layout_mode = 2
+theme_override_font_sizes/normal_font_size = 13
+bbcode_enabled = true
+scroll_following = true
+autowrap_mode = 3
+fit_content = true
+
 [node name="EventStreamPanel" type="PanelContainer" parent="UILayer" unique_id=1732380574]
 anchors_preset = 3
 anchor_left = 1.0
@@ -218,9 +252,7 @@ offset_top = -86.0
 offset_right = -10.0
 offset_bottom = -50.0
 grow_horizontal = 0
-grow_vertical = 0
-
-[node name="VBox" type="VBoxContainer" parent="UILayer/EventStreamPanel" unique_id=1892734101]
+grow_vertical = 0[node name="VBox" type="VBoxContainer" parent="UILayer/EventStreamPanel" unique_id=1892734101]
 layout_mode = 2
 theme_override_constants/separation = 0
 
