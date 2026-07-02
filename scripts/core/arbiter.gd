@@ -90,6 +90,108 @@ func settle_proposed_action(monarch: String, proposed_action: String, target: St
 	}
 	return settle_agent_action(action)
 
+# v7.3.7 RFC-002：面谈立场结算
+# stance ∈ {"推合纵", "推亲秦", "中立"}
+# 设计原则：
+#   推合纵 = 反制/削弱原动作（合纵国盟信正向）
+#   推亲秦 = 强化原动作
+#   中立   = 原样（等价 settle_proposed_action）
+func settle_proposed_action_with_stance(monarch: String, proposed_action: String, stance: String, target: String = "") -> Dictionary:
+	if stance == "中立":
+		return settle_proposed_action(monarch, proposed_action, target)
+	var action_id: String = String(PROPOSED_ACTION_MAP.get(proposed_action, proposed_action))
+	if target == "":
+		target = _default_target_for(monarch, action_id)
+	var deltas: Dictionary = {}
+	var factor: int = 1 if stance == "推亲秦" else -1  # +1=强化秦, -1=反制/合纵得利
+
+	# 按 action + stance 结算（对齐 C12 §二/三/四 的 stance_aware_actions）
+	if action_id == "pressure":
+		if stance == "推亲秦":
+			_add_delta(deltas, target, {"guowei": -8})
+			_add_delta(deltas, monarch, {"zhanxin": 5})
+		else:  # 推合纵：劝缓兵，秦压力削弱
+			_add_delta(deltas, target, {"guowei": -2, "mengxin": 3})
+			_add_delta(deltas, monarch, {"zhanxin": -2})
+	elif action_id == "alienate":
+		if stance == "推亲秦":
+			_add_delta(deltas, target, {"mengxin": -10})
+			for c in ["qin", "zhao", "qi"]:
+				if c != monarch and c != target:
+					_add_delta(deltas, c, {"mengxin": -6})
+					break
+		else:  # 推合纵：劝阻/反制，合纵巩固
+			_add_delta(deltas, target, {"mengxin": 3})
+			for c in ["qin", "zhao", "qi"]:
+				if c != monarch and c != target:
+					_add_delta(deltas, c, {"mengxin": 3})
+					break
+	elif action_id == "lure":
+		if stance == "推亲秦":
+			_add_delta(deltas, target, {"mengxin": 8})
+			for c in ["qin", "zhao", "qi"]:
+				if c != monarch and c != target:
+					_add_delta(deltas, c, {"mengxin": -5})
+					break
+		else:  # 推合纵：戳穿利诱
+			_add_delta(deltas, target, {"mengxin": -2})
+			for c in ["qin", "zhao", "qi"]:
+				if c != monarch and c != target:
+					_add_delta(deltas, c, {"mengxin": 3})
+					break
+	elif action_id == "prepare":
+		if stance == "推亲秦":
+			_add_delta(deltas, monarch, {"guowei": 5, "zhanxin": 7})
+		else:  # 推合纵：劝缓备战
+			_add_delta(deltas, monarch, {"zhanxin": -3})
+			for c in ["qin", "zhao", "qi"]:
+				if c != monarch:
+					_add_delta(deltas, c, {"mengxin": 2})
+	elif action_id == "seek_alliance":
+		if stance == "推合纵":
+			_add_delta(deltas, monarch, {"mengxin": 8})
+			_add_delta(deltas, target, {"mengxin": 8})
+		else:  # 推亲秦：劝赵放弃求盟
+			_add_delta(deltas, monarch, {"mengxin": -3})
+			_add_delta(deltas, target, {"mengxin": -3})
+	elif action_id == "probe":
+		# 试探本身无数值影响，立场只影响后续记忆
+		pass
+	elif action_id == "observation":
+		if stance == "推合纵":
+			# 齐从观望转向靠拢合纵
+			_add_delta(deltas, monarch, {"mengxin": 5})
+		else:  # 推亲秦：齐坐实观望渔利
+			_add_delta(deltas, monarch, {"zhanxin": -2, "mengxin": -3})
+	elif action_id == "wait_price":
+		if stance == "推亲秦":
+			_add_delta(deltas, target, {"mengxin": 8})
+			_add_delta(deltas, monarch, {"mengxin": 8})
+		else:  # 推合纵：拒绝出价
+			_add_delta(deltas, target, {"mengxin": -2})
+			_add_delta(deltas, monarch, {"mengxin": 2})
+	elif action_id == "hijack":
+		if stance == "推亲秦":
+			_add_delta(deltas, target, {"guowei": -5})
+			_add_delta(deltas, monarch, {"guowei": 4})
+		else:  # 推合纵：劝止趁火打劫
+			_add_delta(deltas, target, {"mengxin": 3})
+			_add_delta(deltas, monarch, {"guowei": -1})
+	elif action_id == "self_protect":
+		if stance == "推合纵":
+			# 齐从闭门自保转合纵
+			_add_delta(deltas, monarch, {"mengxin": 3})
+		else:
+			pass
+
+	# 应用到 State
+	for country in deltas.keys():
+		var d: Dictionary = deltas[country]
+		if not d.is_empty():
+			State.apply_country_delta(country, d)
+
+	return {"deltas": deltas, "note": _describe_delta(monarch, action_id + "·" + stance, target, deltas)}
+
 func _default_target_for(monarch: String, _action_id: String) -> String:
 	for c in ["qin", "zhao", "qi"]:
 		if c != monarch:
@@ -220,7 +322,7 @@ func apply_drift() -> void:
 	if not State.acted_this_turn:
 		pd["mingwang"] = -2
 	State.apply_player_delta(pd)
-	State.apply_country_delta("qin",  {"guowei": 5})
+	State.apply_country_delta("qin",  {"guowei": 3})
 	State.apply_country_delta("zhao", {"guowei": 2, "mengxin": -2})
 	State.apply_country_delta("qi",   {"guowei": 2, "mengxin": -2})
 

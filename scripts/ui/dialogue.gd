@@ -378,11 +378,31 @@ func _apply_verdict_from_llm(parsed: Dictionary, player_text: String = "") -> vo
 	_apply_stance(stance, resolved, response_text, player_text)
 
 func _apply_verdict_from_arbiter(text: String, note: String) -> void:
-	# 关键词兜底判读 推合纵/中立/推亲秦
+	# 关键词兜底判读 推合纵/中立/推亲秦（对齐 C13 v7.3.7）
 	var t: String = text.strip_edges()
-	var hezong_kw: Array = ["合纵", "抗秦", "联齐", "联赵", "共抗", "唇齿"]
-	var qin_kw: Array = ["亲秦", "连横", "从秦", "归秦", "投秦", "秦交", "顺秦"]
+	# v7.3.7 P0-10：投降类词优先判为中立，不判为亲秦
+	var neutral_kw: Array = ["降", "投降", "乞降", "请降", "归降",
+		"中立", "自保", "自守", "观望", "看情况", "再说", "且慢",
+		"依君", "听凭", "由你", "由王", "由君", "全凭",
+		"不敢妄言", "臣不知", "难以作答"]
+	var hezong_kw: Array = ["合", "纵", "盟", "抗秦", "联六国", "联抗", "六国合",
+		"抗", "援助", "结盟", "联赵", "联齐", "联韩", "联魏", "联楚",
+		"义兵", "义师", "义战", "共存", "守望相助", "互保", "公义", "唇齿"]
+	# 亲秦：v7.3.7 移除 "降/投降"
+	var qin_kw: Array = ["连横", "亲秦", "和秦", "归秦", "归顺", "事秦", "奉秦",
+		"献", "三城", "河外", "河西", "议和", "和约",
+		"聘", "质子", "朝贡", "岁贡", "纳贡", "通好"]
 	var stance: String = "中立"
+	# 优先匹配中立（含投降词）
+	for k in neutral_kw:
+		if t.find(k) >= 0:
+			stance = "中立"
+			# 若已含投降类，直接锁定中立
+			if k in ["降", "投降", "乞降", "请降", "归降"]:
+				_apply_stance(stance, true, "（%s · 投降→中立）" % note, text)
+				return
+			break
+	# 无投降词 → 检查合纵
 	for k in hezong_kw:
 		if t.find(k) >= 0:
 			stance = "推合纵"
@@ -392,15 +412,19 @@ func _apply_verdict_from_arbiter(text: String, note: String) -> void:
 			if t.find(k) >= 0:
 				stance = "推亲秦"
 				break
-	# 中立/推合纵/推亲秦 都视为背书 → resolved=true
 	_apply_stance(stance, true, "（%s）" % note, text)
 
 func _apply_stance(stance: String, resolved: bool, response_text: String, player_text: String) -> void:
 	var arb = get_node("/root/Arbiter")
 	var deltas_note: String = ""
-	if resolved and arb != null and arb.has_method("settle_proposed_action"):
-		var res: Dictionary = arb.settle_proposed_action(country, _proposed_action, "")
-		deltas_note = String(res.get("note", ""))
+	if resolved and arb != null:
+		# v7.3.7 RFC-002：立场三分支结算国家三维
+		if arb.has_method("settle_proposed_action_with_stance"):
+			var res: Dictionary = arb.settle_proposed_action_with_stance(country, _proposed_action, stance, "")
+			deltas_note = String(res.get("note", ""))
+		elif arb.has_method("settle_proposed_action"):
+			var res: Dictionary = arb.settle_proposed_action(country, _proposed_action, "")
+			deltas_note = String(res.get("note", ""))
 	# 面谈完成 → 送 1 张情报牌（面谈摘要）
 	State.intel_hand.append("[情报·%s面谈] 提议:%s / 你:%s / 结果:%s" % [
 		_country_name(country), _proposed_action, stance, ("生效" if resolved else "搁置")

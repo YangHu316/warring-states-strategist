@@ -72,7 +72,9 @@
       "Bash(curl -sS -X POST https://api.deepseek.com/v1/chat/completions -H 'Content-Type: application/json' -H 'Authorization: Bearer sk-57f1b57e45c84cd69d10e2a8a3b1856b' -d '{\"model\":\"deepseek-v4-flash\",\"messages\":[{\"role\":\"user\",\"content\":\"输出严格JSON: {\\\\\"ping\\\\\":\\\\\"pong\\\\\"}\"}],\"response_format\":{\"type\":\"json_object\"},\"temperature\":0.1}')",
       "Bash(git -C \"c:/Users/vicyanghu/Downloads/game_20260630_d3d6de\" status)",
       "Bash(gh auth *)",
-      "Bash(git init *)"
+      "Bash(git init *)",
+      "Bash(grep -B 2 -A 25 '\"dilemma_id\"' \"c:/Users/vicyanghu/Downloads/game_20260630_d3d6de/策划交付物/D2-策划交付物-20260702/C12-召见困局prompt模板.md\" 2>&1 | head -400 > /tmp/c12_dump.txt && wc -l /tmp/c12_dump.txt)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
       "C:\\Users\\vicyanghu\\Downloads",
