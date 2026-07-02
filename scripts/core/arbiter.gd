@@ -68,6 +68,34 @@ func roll_card(card_id: String, direction: String, target_country: String, intel
 # 输入 action: {actor, target_country, action_type, ...}
 # 依设计表结算所有相关国家的三维变动。
 # 返回：{deltas: {country: {attr:delta}}, note}
+
+# v7.3.5 面谈立场结算：君主 monarch 的 proposed_action 被玩家赞同 → 走 settle_agent_action
+# proposed_action_map: 中文动作名 → 英文 action_id 的映射（提供给 dialogue 用）
+const PROPOSED_ACTION_MAP: Dictionary = {
+	"军事施压": "pressure", "遣使离间": "alienate", "连横利诱": "lure", "备战蓄力": "prepare",
+	"求盟联齐": "seek_alliance", "备战固境": "prepare", "遣使试探": "probe", "骑墙观望": "observation",
+	"观望渔利": "observation", "待价而沽": "wait_price", "趁火打劫": "hijack", "闭门自保": "self_protect"
+}
+
+func settle_proposed_action(monarch: String, proposed_action: String, target: String = "") -> Dictionary:
+	# 若 proposed_action 是中文名，先翻译
+	var action_id: String = String(PROPOSED_ACTION_MAP.get(proposed_action, proposed_action))
+	# 若 target 为空，用一个默认目标（对手最强/最弱国）
+	if target == "":
+		target = _default_target_for(monarch, action_id)
+	var action: Dictionary = {
+		"actor": monarch,
+		"target_country": target,
+		"action_type": action_id
+	}
+	return settle_agent_action(action)
+
+func _default_target_for(monarch: String, _action_id: String) -> String:
+	for c in ["qin", "zhao", "qi"]:
+		if c != monarch:
+			return c
+	return ""
+
 func settle_agent_action(action: Dictionary) -> Dictionary:
 	var actor: String = String(action.get("actor", ""))
 	var target: String = String(action.get("target_country", ""))

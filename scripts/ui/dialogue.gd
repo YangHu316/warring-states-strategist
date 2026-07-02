@@ -1,15 +1,15 @@
 extends Node2D
-# 面谈场景 · v5 · 双模式（summon 有预设 / active 只自输）· 布局用 VBox
+# 面谈场景 · v7.3.5 · 君主提议行动 · 玩家赞同/反对/中立 · 无成功率 · 影响国家三维
 
 signal dialogue_finished(country: String, verdict: String)
+signal audience_settled(country: String, verdict: String, player_text: String, summary: String)
 
 var country: String = ""
 var event_text: String = ""
 var mode: String = "summon"
 var _submitted: bool = false
-var _preset_a: String = ""
-var _preset_b: String = ""
-var _preset_c: String = ""
+var _proposed_action: String = ""
+var _monarch_opening: String = ""
 var _presets_ready: bool = false
 
 @onready var top_label: Label = $UILayer/Root/VBox/TopLabel
@@ -22,15 +22,26 @@ var _presets_ready: bool = false
 @onready var preset_c_btn: Button = $UILayer/Root/VBox/PresetVBox/PresetC
 @onready var others_btn: Button = $UILayer/Root/VBox/PresetVBox/OthersBtn
 @onready var input_box: TextEdit = $UILayer/Root/VBox/InputBox
-@onready var submit_btn: Button = $UILayer/Root/VBox/SubmitButton
+@onready var submit_hbox: HBoxContainer = $UILayer/Root/VBox/SubmitHBox
+@onready var advisor_btn: Button = $UILayer/Root/VBox/SubmitHBox/AdvisorButton
+@onready var submit_btn: Button = $UILayer/Root/VBox/SubmitHBox/SubmitButton
+@onready var advisor_panel: PanelContainer = $UILayer/Root/VBox/AdvisorPreviewPanel
+@onready var advisor_preview_label: Label = $UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorPreviewLabel
+@onready var advisor_confirm_btn: Button = $UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox/AdvisorConfirmBtn
+@onready var advisor_reject_btn: Button = $UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox/AdvisorRejectBtn
 @onready var result_label: Label = $UILayer/Root/VBox/ResultLabel
 @onready var portrait: Sprite2D = $Portrait
 
+var _advisor_text: String = ""
+
 func _ready() -> void:
 	submit_btn.pressed.connect(_on_submit)
-	preset_a_btn.pressed.connect(func(): _on_preset(_preset_a))
-	preset_b_btn.pressed.connect(func(): _on_preset(_preset_b))
-	preset_c_btn.pressed.connect(func(): _on_preset(_preset_c))
+	advisor_btn.pressed.connect(_on_advisor_rewrite)
+	advisor_confirm_btn.pressed.connect(_on_advisor_confirm)
+	advisor_reject_btn.pressed.connect(_on_advisor_reject)
+	preset_a_btn.pressed.connect(func(): _on_preset("推合纵"))
+	preset_b_btn.pressed.connect(func(): _on_preset("中立"))
+	preset_c_btn.pressed.connect(func(): _on_preset("推亲秦"))
 	others_btn.pressed.connect(_on_others)
 	preset_a_btn.disabled = true
 	preset_b_btn.disabled = true
@@ -55,47 +66,40 @@ func setup(c: String, ev_text: String, m: String = "summon") -> void:
 	else:
 		briefing_label.text = "（无博弈记录）"
 
-	if mode == "summon":
-		monarch_speech.text = "君主思忖片刻，望向你，缓缓开口……"
-		preset_vbox.visible = true
-		input_box.visible = false
-		submit_btn.visible = false
-		_request_summon_openings()
-	else:
-		var lines: Array = mock.get("audience", [])
-		var speech: String = ""
-		if lines.size() > 0:
-			speech = String(lines[randi() % lines.size()])
-		if event_text != "":
-			speech = event_text + "\n" + speech
-		monarch_speech.text = speech
-		preset_vbox.visible = false
-		input_box.visible = true
-		submit_btn.visible = true
+	monarch_speech.text = "君主思忖片刻，望向你，缓缓开口……"
+	preset_vbox.visible = true
+	input_box.visible = false
+	submit_hbox.visible = false
+	advisor_panel.visible = false
+	preset_a_btn.text = "A. 推合纵（加载中…）"
+	preset_b_btn.text = "B. 中立"
+	preset_c_btn.text = "C. 推亲秦"
+	others_btn.text = "others 自己表态"
+	_request_monarch_proposal()
 
-func _request_summon_openings() -> void:
+# === 面谈开场：请君主提出一个行动意图 ===
+func _request_monarch_proposal() -> void:
 	var llm = get_node_or_null("/root/LLMClient")
 	if llm == null or not llm.is_ready():
-		_use_fallback_openings()
+		_use_fallback_proposal()
 		return
-	var prompt: String = _build_summon_opening_prompt()
+	var prompt: String = _build_proposal_prompt()
 	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 15.0, "temperature": 0.8, "response_json": true},
 		func(parsed: Variant, err: String):
 			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
-				_use_fallback_openings()
+				_use_fallback_proposal()
 				return
-			var q: String = String((parsed as Dictionary).get("question", ""))
-			var opts: Variant = (parsed as Dictionary).get("options", null)
-			if q == "" or typeof(opts) != TYPE_ARRAY or (opts as Array).size() < 3:
-				_use_fallback_openings()
+			var opening: String = String((parsed as Dictionary).get("opening", ""))
+			var proposed: String = String((parsed as Dictionary).get("proposed_action", ""))
+			if opening == "" or proposed == "":
+				_use_fallback_proposal()
 				return
-			monarch_speech.text = q
-			_preset_a = String((opts as Array)[0])
-			_preset_b = String((opts as Array)[1])
-			_preset_c = String((opts as Array)[2])
-			preset_a_btn.text = "A. " + _preset_a
-			preset_b_btn.text = "B. " + _preset_b
-			preset_c_btn.text = "C. " + _preset_c
+			_monarch_opening = opening
+			_proposed_action = proposed
+			monarch_speech.text = opening
+			preset_a_btn.text = "A. 推合纵 —— 联齐赵抗秦"
+			preset_b_btn.text = "B. 中立 —— 请大王自决"
+			preset_c_btn.text = "C. 推亲秦 —— 与秦交好"
 			_presets_ready = true
 			preset_a_btn.disabled = false
 			preset_b_btn.disabled = false
@@ -103,51 +107,61 @@ func _request_summon_openings() -> void:
 			others_btn.disabled = false
 	)
 
-func _use_fallback_openings() -> void:
+func _use_fallback_proposal() -> void:
 	var mock: Dictionary = State.monarch_mock.get(country, {})
 	var lines: Array = mock.get("audience", [])
-	monarch_speech.text = String(lines[randi() % lines.size()]) if lines.size() > 0 else "先生请言。"
-	_preset_a = "臣以为当合纵抗秦，以齐赵之力可拒之。"
-	_preset_b = "此局关键在时机，臣请大王暂缓表态，静观其变。"
-	_preset_c = "秦势不可当，与其抗之，不如以利结之。"
-	preset_a_btn.text = "A. " + _preset_a
-	preset_b_btn.text = "B. " + _preset_b
-	preset_c_btn.text = "C. " + _preset_c
+	var default_actions: Dictionary = {
+		"qin": {"opening": "赵齐动向不明，寡人有意备战蓄力，以待时变。足下以为何如？", "action": "prepare"},
+		"zhao": {"opening": "秦势逼人，孤欲联齐求盟以为犄角。先生以为可行否？", "action": "seek_alliance"},
+		"qi": {"opening": "秦赵相持，寡人思观望渔利，先生以为妥当否？", "action": "observation"}
+	}
+	var fb: Dictionary = default_actions.get(country, default_actions["qin"])
+	_monarch_opening = String(fb["opening"])
+	_proposed_action = String(fb["action"])
+	monarch_speech.text = _monarch_opening
+	preset_a_btn.text = "A. 推合纵 —— 联齐赵抗秦"
+	preset_b_btn.text = "B. 中立 —— 请大王自决"
+	preset_c_btn.text = "C. 推亲秦 —— 与秦交好"
 	_presets_ready = true
 	preset_a_btn.disabled = false
 	preset_b_btn.disabled = false
 	preset_c_btn.disabled = false
 	others_btn.disabled = false
 
-func _build_summon_opening_prompt() -> String:
+func _build_proposal_prompt() -> String:
 	var monarch_names = {"qin": "秦王嬴稷（雄猜多疑）", "zhao": "赵王赵何（犹疑谨慎）", "qi": "齐王田地（精明渔利）"}
+	var actions_defs = {
+		"qin": "军事施压 pressure / 遣使离间 alienate / 连横利诱 lure / 备战蓄力 prepare",
+		"zhao": "求盟联齐 seek_alliance / 备战固境 prepare / 遣使试探 probe / 骑墙观望 observation",
+		"qi": "观望渔利 observation / 待价而沽 wait_price / 趁火打劫 hijack / 闭门自保 self_protect"
+	}
 	var attrs: Dictionary = State.country_attrs.get(country, {})
 	var lines: Array = [
-		"# 世界铁律（不可违反）",
-		"这个世界只有三个国家：秦、赵、齐。**不存在**韩、魏、楚、燕、宋、卫等任何其他国家。",
-		"你的问句和 3 个选项**只能提及秦、赵、齐**。绝不允许出现其他国名或使者名（如张仪、平原君、廉颇、孟尝君可用，但苏秦、屈原等不许）。",
+		"# 世界铁律",
+		"这个世界只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
 		"",
 		"# 你是",
 		String(monarch_names.get(country, country)),
-		"你现在召见了纵横家，正准备向他抛出你眼下的困局。",
+		"你现在召见了纵横家，正准备向他抛出你眼下的困局，并征询他的立场（推合纵/中立/推亲秦）。",
 		"",
 		"# 局势",
 		"你的三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
 		"关键事件：%s" % event_text,
 		"",
-		"# 任务",
-		"1. 用文言写一句 ≤ 60 字的问句 question：说出你眼下的困局，请纵横家给建议。",
-		"2. 生成 3 个可能的回答选项 options，每条 ≤ 30 字，第一人称（\"臣以为...\"）。",
-		"   - options[0]: 立场偏向合纵抗秦（秦赵齐三国框架内的合纵）",
-		"   - options[1]: 中立自保、观望权变",
-		"   - options[2]: 立场偏向亲秦连横",
+		"# 你的可用行动",
+		String(actions_defs.get(country, "")),
 		"",
-		"# 输出（严格 JSON）：",
-		'{"question": "...", "options": ["...", "...", "..."]}'
+		"# 任务",
+		"1. 从上表选一个你倾向采取的行动 proposed_action（用英文 id，如 pressure / alienate / lure / prepare / seek_alliance / probe / observation / wait_price / hijack / self_protect）。",
+		"2. 用文言写一段 ≤ 80 字的开场 opening：先简述你正在博弈的僵局，说出你想采取的行动意图，最后用一句问句征询纵横家（如'足下以为如何'）。",
+		"",
+		"# 输出（严格 JSON，无多余文字）：",
+		'{"opening": "...", "proposed_action": "..."}'
 	]
 	return "\n".join(lines)
 
-func _on_preset(text: String) -> void:
+# === 玩家表态 ===
+func _on_preset(stance: String) -> void:
 	if _submitted or not _presets_ready:
 		return
 	_submitted = true
@@ -155,11 +169,10 @@ func _on_preset(text: String) -> void:
 	preset_b_btn.disabled = true
 	preset_c_btn.disabled = true
 	others_btn.disabled = true
-	input_box.text = text
+	input_box.text = stance
 	input_box.visible = true
 	input_box.editable = false
-	submit_btn.visible = false
-	_send_to_verdict(text)
+	_send_to_verdict(stance)
 
 func _on_others() -> void:
 	if _submitted:
@@ -167,7 +180,80 @@ func _on_others() -> void:
 	preset_vbox.visible = false
 	input_box.visible = true
 	input_box.editable = true
-	submit_btn.visible = true
+	submit_hbox.visible = true
+	submit_btn.disabled = false
+	input_box.grab_focus()
+
+func _on_advisor_rewrite() -> void:
+	if _submitted:
+		return
+	var raw: String = input_box.text.strip_edges()
+	if raw == "":
+		result_label.text = "请先输入你的意图，谋士方能代拟。"
+		result_label.add_theme_color_override("font_color", Color(1, 0.75, 0.4))
+		return
+	var llm = get_node_or_null("/root/LLMClient")
+	if llm == null or not llm.is_ready():
+		result_label.text = "谋士离席（LLM 未连接）—— 请直言。"
+		result_label.add_theme_color_override("font_color", Color(1, 0.75, 0.4))
+		return
+	advisor_btn.disabled = true
+	submit_btn.disabled = true
+	result_label.text = "谋士润色中…"
+	result_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.5))
+	var monarch_names = {"qin": "秦王嬴稷", "zhao": "赵王赵何", "qi": "齐王田地"}
+	var lines: Array = [
+		"# 你是纵横家的私人谋士，负责将纵横家的白话意图润色为符合战国场合的说辞。",
+		"# 世界铁律：世界只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
+		"",
+		"# 场合",
+		"纵横家正在面见 %s，君主刚提议采取行动「%s」，" % [String(monarch_names.get(country, country)), _proposed_action],
+		"纵横家欲对该提议表态。",
+		"",
+		"# 纵横家的意图（白话）",
+		"「%s」" % raw,
+		"",
+		"# 你的任务",
+		"将上文润色为一段 ≤ 100 字的文言表态，第一人称（\"臣\"），保留纵横家的核心目的与立场（赞同/反对/中立均可，看原意）。",
+		"要求：",
+		"- 用文言，但不必生僻",
+		"- 措辞讲究，符合面见君王的礼节",
+		"- **不得改变原意的立场**",
+		"",
+		"# 输出（严格 JSON）",
+		'{"polished": "…润色后的文言…"}'
+	]
+	llm.request("\n".join(lines), {"model": "deepseek-v4-flash", "timeout_sec": 15.0, "temperature": 0.7, "response_json": true},
+		func(parsed: Variant, err: String):
+			advisor_btn.disabled = false
+			submit_btn.disabled = false
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				result_label.text = "谋士辞穷（%s）—— 请直言。" % err
+				result_label.add_theme_color_override("font_color", Color(1, 0.75, 0.4))
+				return
+			var polished: String = String((parsed as Dictionary).get("polished", ""))
+			if polished == "":
+				result_label.text = "谋士未能出言 —— 请直言。"
+				return
+			_advisor_text = polished
+			advisor_preview_label.text = polished
+			advisor_panel.visible = true
+			result_label.text = ""
+	)
+
+func _on_advisor_confirm() -> void:
+	if _submitted or _advisor_text == "":
+		return
+	_submitted = true
+	input_box.text = _advisor_text
+	input_box.editable = false
+	advisor_panel.visible = false
+	submit_hbox.visible = false
+	_send_to_verdict(_advisor_text)
+
+func _on_advisor_reject() -> void:
+	advisor_panel.visible = false
+	_advisor_text = ""
 	input_box.grab_focus()
 
 func _on_submit() -> void:
@@ -182,86 +268,111 @@ func _send_to_verdict(text: String) -> void:
 	result_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.5))
 	var llm = get_node_or_null("/root/LLMClient")
 	if llm != null and llm.is_ready():
-		var prompt: String = _build_dialogue_prompt(text)
+		var prompt: String = _build_verdict_prompt(text)
 		llm.request(prompt, {"model": "deepseek-v4-pro", "timeout_sec": 30.0, "temperature": 0.6, "response_json": true},
 			func(parsed: Variant, err: String):
 				if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 					_apply_verdict_from_arbiter(text, "LLM 失败(%s) 走关键词兜底" % err)
 					return
-				_apply_verdict_from_llm(parsed as Dictionary)
+				_apply_verdict_from_llm(parsed as Dictionary, text)
 		)
 	else:
 		var reason: String = "无 LLM 客户端" if llm == null else "config.cfg 无 api_key"
 		_apply_verdict_from_arbiter(text, "%s 走关键词兜底" % reason)
 
-func _build_dialogue_prompt(player_text: String) -> String:
+func _build_verdict_prompt(player_text: String) -> String:
 	var monarch_persona = {
-		"qin": "秦王嬴稷。雄猜多疑，霸道果决。你欲东出灭六国，最惧合纵。",
-		"zhao": "赵王赵何。犹疑谨慎，欲联齐抗秦又怕被拖累。",
-		"qi": "齐王田地。精明渔利，喜观望，谁给的多倾向谁。"
+		"qin": "秦王嬴稷。雄猜多疑，霸道果决。",
+		"zhao": "赵王赵何。犹疑谨慎，怕独战怕激秦。",
+		"qi": "齐王田地。精明渔利，喜观望。"
 	}
 	var attrs: Dictionary = State.country_attrs.get(country, {})
 	var lines: Array = [
-		"# 世界铁律",
-		"这个世界只有三个国家：秦、赵、齐。**不存在**韩、魏、楚、燕、宋、卫等其他国家。你的回话只能提及秦赵齐（可提张仪/平原君/廉颇/孟尝君等本作出场人物）。",
+		"# 世界铁律：只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
 		"",
-		"# 你是谁", monarch_persona.get(country, "一位战国君主"),
+		"# 你是", monarch_persona.get(country, "一位战国君主"),
 		"",
-		"# 当前局势",
+		"# 你先前的开场（提议行动）",
+		_monarch_opening,
+		"（你想执行的行动：%s）" % _proposed_action,
+		"",
+		"# 局势",
 		"你的三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
 		"关键事件：%s" % event_text,
 		"",
-		"# 一位纵横家在你面前，说：", "「%s」" % player_text,
+		"# 纵横家的表态",
+		"「%s」" % player_text,
 		"",
-		"# 你的评估任务",
-		"从 3 个维度对纵横家的这段话打分（0-10）：",
-		"- comprehension: 你是否理解他想表达什么",
-		"- stance_match: 他的话是否与你的立场匹配（合你意的越高）",
-		"- persuasion: 他的游说力度",
+		"# 你的判断任务",
+		"判断纵横家的立场是**推合纵**（联齐赵抗秦）、**推亲秦**（与秦交好），还是**中立**（不明确表态）：",
+		"- 推合纵 → 玩家为你背书 → resolved=true，你坚定执行 proposed_action",
+		"- 推亲秦 → 玩家为你背书 → resolved=true，你坚定执行 proposed_action",
+		"- 中立/模糊 → 你按自己的性格自决（默认执行）→ resolved=true",
 		"",
 		"# 输出（严格 JSON）：",
-		'{"comprehension": 0-10, "stance_match": 0-10, "persuasion": 0-10, "response": "≤80 字君主回话（文言，只提秦赵齐）", "internal": "≤40 字内心独白"}'
+		'{"player_stance": "推合纵"|"中立"|"推亲秦", "response": "≤ 60 字君主回话（文言，只提秦赵齐）", "resolved": true|false}'
 	]
 	return "\n".join(lines)
 
-func _apply_verdict_from_llm(parsed: Dictionary) -> void:
-	var comp: float = clampf(float(parsed.get("comprehension", 5)), 0.0, 10.0)
-	var stance: float = clampf(float(parsed.get("stance_match", 5)), 0.0, 10.0)
-	var pers: float = clampf(float(parsed.get("persuasion", 5)), 0.0, 10.0)
-	var score: float = comp * 0.3 + stance * 0.4 + pers * 0.3
-	var verdict: String = "accept" if score >= 6.0 else "reject"
+func _apply_verdict_from_llm(parsed: Dictionary, player_text: String = "") -> void:
+	var stance: String = String(parsed.get("player_stance", "中立"))
+	var resolved: bool = bool(parsed.get("resolved", true))
 	var response_text: String = String(parsed.get("response", ""))
-
-	if verdict == "accept":
-		State.apply_player_delta({"hezong": 8, "mingwang": 5, "xinji": 5})
-		State.pending_intel.append("[情报] %s采纳：%s" % [_country_name(country), response_text if response_text != "" else "君主允诺。"])
-		result_label.text = "采纳 · 综合分 %.1f\n君主：%s" % [score, response_text]
-		result_label.add_theme_color_override("font_color", Color(0.6, 1, 0.6))
-	else:
-		State.apply_player_delta({"mingwang": -5})
-		State.pending_intel.append("[情报] %s拒绝：%s" % [_country_name(country), response_text if response_text != "" else "君主未允。"])
-		result_label.text = "拒绝 · 综合分 %.1f · 名望 -5\n君主：%s" % [score, response_text]
-		result_label.add_theme_color_override("font_color", Color(1, 0.6, 0.6))
-	_finish_after_delay(verdict)
+	_apply_stance(stance, resolved, response_text, player_text)
 
 func _apply_verdict_from_arbiter(text: String, note: String) -> void:
+	# 关键词兜底判读 推合纵/中立/推亲秦
+	var t: String = text.strip_edges()
+	var hezong_kw: Array = ["合纵", "抗秦", "联齐", "联赵", "共抗", "唇齿"]
+	var qin_kw: Array = ["亲秦", "连横", "从秦", "归秦", "投秦", "秦交", "顺秦"]
+	var stance: String = "中立"
+	for k in hezong_kw:
+		if t.find(k) >= 0:
+			stance = "推合纵"
+			break
+	if stance == "中立":
+		for k in qin_kw:
+			if t.find(k) >= 0:
+				stance = "推亲秦"
+				break
+	# 中立/推合纵/推亲秦 都视为背书 → resolved=true
+	_apply_stance(stance, true, "（%s）" % note, text)
+
+func _apply_stance(stance: String, resolved: bool, response_text: String, player_text: String) -> void:
 	var arb = get_node("/root/Arbiter")
-	var res: Dictionary = arb.parse_dialogue(text, country, "")
-	var verdict: String = String(res.get("verdict", "reject"))
-	var score: float = float(res.get("score", 5.0))
-	if verdict == "accept":
-		State.apply_player_delta({"hezong": 8, "mingwang": 5, "xinji": 5})
-		State.pending_intel.append("[情报] %s采纳。" % _country_name(country))
-		result_label.text = "采纳 · %.1f · %s" % [score, note]
-		result_label.add_theme_color_override("font_color", Color(0.6, 1, 0.6))
+	var deltas_note: String = ""
+	if resolved and arb != null and arb.has_method("settle_proposed_action"):
+		var res: Dictionary = arb.settle_proposed_action(country, _proposed_action, "")
+		deltas_note = String(res.get("note", ""))
+	# 面谈完成 → 送 1 张情报牌（面谈摘要）
+	State.intel_hand.append("[情报·%s面谈] 提议:%s / 你:%s / 结果:%s" % [
+		_country_name(country), _proposed_action, stance, ("生效" if resolved else "搁置")
+	])
+	var color: Color
+	if stance == "推合纵":
+		color = Color(0.6, 1, 0.6)
+	elif stance == "推亲秦":
+		color = Color(1, 0.75, 0.5)
 	else:
-		State.apply_player_delta({"mingwang": -5})
-		State.pending_intel.append("[情报] %s拒绝。" % _country_name(country))
-		result_label.text = "拒绝 · %.1f · %s" % [score, note]
-		result_label.add_theme_color_override("font_color", Color(1, 0.6, 0.6))
-	_finish_after_delay(verdict)
+		color = Color(0.9, 0.9, 0.7)
+	result_label.text = "你: %s | 提议 %s → %s\n君主：%s\n%s" % [
+		stance, _proposed_action, ("生效" if resolved else "搁置"), response_text, deltas_note
+	]
+	result_label.add_theme_color_override("font_color", color)
+	_broadcast_audience(stance, resolved, player_text)
+	_finish_after_delay(stance)
+
+func _broadcast_audience(stance: String, resolved: bool, player_text: String) -> void:
+	var summary: String = "%s提议'%s'——纵横家%s，%s" % [
+		_country_name(country), _proposed_action, stance, ("生效" if resolved else "搁置")
+	]
+	emit_signal("audience_settled", country, stance, player_text, summary)
 
 func _finish_after_delay(verdict: String) -> void:
+	preset_vbox.visible = false
+	advisor_panel.visible = false
+	advisor_btn.visible = false
+	submit_hbox.visible = true
 	submit_btn.disabled = false
 	submit_btn.visible = true
 	submit_btn.text = "关闭"

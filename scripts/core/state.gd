@@ -10,6 +10,8 @@ enum GameState { BOOT, READY, PLAYING, GAME_OVER }
 var current_state: int = GameState.BOOT
 var is_ready: bool = false
 
+const INTEL_BONUS_PER_CARD: int = 5
+
 # 玩家三维
 var player_attrs: Dictionary = {"hezong": 40, "mingwang": 50, "xinji": 40}
 
