@@ -5,7 +5,10 @@ extends Node2D
 @onready var key_event_banner: Label = $UILayer/KeyEventBanner
 @onready var country_info_panel: PanelContainer = $UILayer/CountryInfoPanel
 @onready var country_info_label: Label = $UILayer/CountryInfoPanel/CountryInfoLabel
-@onready var event_stream: RichTextLabel = $UILayer/EventStreamPanel/EventStream
+@onready var event_stream: RichTextLabel = $UILayer/EventStreamPanel/VBox/EventStreamScroll/EventStream
+@onready var event_stream_panel: PanelContainer = $UILayer/EventStreamPanel
+@onready var event_stream_toggle: Button = $UILayer/EventStreamPanel/VBox/TitleBar/EventStreamToggle
+@onready var event_stream_scroll: ScrollContainer = $UILayer/EventStreamPanel/VBox/EventStreamScroll
 @onready var action_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/ActionPanel/ActionCardsHBox
 @onready var intel_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/IntelPanel/IntelScroll/IntelCardsHBox
 @onready var next_turn_button: Button = $UILayer/ActionButtonsVBox/NextTurnButton
@@ -42,6 +45,11 @@ var _current_event_tag: String = "default"
 var _current_event_text: String = ""
 var _moving: bool = false
 var _free_phase_started: bool = false
+var _event_panel_expanded: bool = false
+const _EVENT_PANEL_COLLAPSED_TOP: float = -226.0
+const _EVENT_PANEL_EXPANDED_TOP: float = -490.0
+const _EVENT_LINE_MAX: int = 50
+const _EVENT_MAX_LINES: int = 60
 
 func _ready() -> void:
 	# Load Chinese font for dynamic UI
@@ -68,6 +76,7 @@ func _ready() -> void:
 	next_turn_button.pressed.connect(_on_next_turn_pressed)
 	dump_button.pressed.connect(_on_dump_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
+	event_stream_toggle.pressed.connect(_toggle_event_panel)
 
 	# 点击地图节点 — 采用 input_event
 	area_qin.input_event.connect(func(_v, ev, _s): _on_node_click_event("qin", ev))
@@ -709,7 +718,34 @@ func _update_player_icon() -> void:
 func push_event(text: String) -> void:
 	if event_stream == null:
 		return
-	event_stream.append_text(text + "\n")
+	var line: String = text
+	# 去掉嵌入换行，强制单行
+	line = line.replace("\n", " ")
+	if line.length() > _EVENT_LINE_MAX:
+		line = line.substr(0, _EVENT_LINE_MAX - 1) + "…"
+	event_stream.append_text(line + "\n")
+	# 行数过多时清空重建（避免 RichTextLabel 长期累积性能下降）
+	if event_stream.get_line_count() > _EVENT_MAX_LINES:
+		var full: String = event_stream.get_parsed_text()
+		var lines: PackedStringArray = full.split("\n", false)
+		var keep_from: int = max(0, lines.size() - _EVENT_MAX_LINES)
+		var kept: PackedStringArray = lines.slice(keep_from)
+		event_stream.clear()
+		event_stream.append_text("\n".join(kept))
+
+func _toggle_event_panel() -> void:
+	_event_panel_expanded = not _event_panel_expanded
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_OUT)
+	if _event_panel_expanded:
+		event_stream_toggle.text = "▲ 世界动态（点击收起）"
+		event_stream_scroll.visible = true
+		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_EXPANDED_TOP, 0.22)
+	else:
+		event_stream_toggle.text = "▼ 世界动态（点击展开）"
+		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_COLLAPSED_TOP, 0.22)
+		tween.tween_callback(func(): event_stream_scroll.visible = false)
 
 static func _country_name(c: String) -> String:
 	match c:

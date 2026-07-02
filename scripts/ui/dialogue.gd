@@ -16,7 +16,7 @@ var _stance_b: String = ""
 var _stance_c: String = ""
 
 @onready var top_label: Label = $UILayer/Root/VBox/TopLabel
-@onready var name_label: Label = $UILayer/Root/VBox/NameLabel
+@onready var name_label: Label = $UILayer/NameLabel
 @onready var briefing_label: Label = $UILayer/Root/VBox/BriefingPanel/BriefingVBox/BriefingLabel
 @onready var monarch_speech: Label = $UILayer/Root/VBox/MonarchSpeechPanel/MonarchSpeech
 @onready var preset_vbox: VBoxContainer = $UILayer/Root/VBox/PresetVBox
@@ -34,6 +34,7 @@ var _stance_c: String = ""
 @onready var advisor_reject_btn: Button = $UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox/AdvisorRejectBtn
 @onready var result_label: Label = $UILayer/Root/VBox/ResultLabel
 @onready var portrait: Sprite2D = $Portrait
+@onready var bg: Sprite2D = $BG
 
 var _advisor_text: String = ""
 
@@ -63,6 +64,16 @@ func setup(c: String, ev_text: String, m: String = "summon") -> void:
 	var tex: Texture2D = load(portrait_path)
 	if tex != null:
 		portrait.texture = tex
+	# 大殿背景按国家切换（秦/赵/齐 三张 02 大殿美术，v7.3.7 美术迭代）
+	var bg_path: String = "res://assets/bg/dialogue_%s.png" % c
+	var bg_tex: Texture2D = load(bg_path)
+	if bg_tex != null:
+		bg.texture = bg_tex
+	else:
+		push_warning("dialogue: 背景图缺失 %s（fallback = 秦国大殿）" % bg_path)
+		var fb: Texture2D = load("res://assets/bg/dialogue_qin.png")
+		if fb != null:
+			bg.texture = fb
 	var am = get_node_or_null("/root/AgentManager")
 	if am != null and am.has_method("get_audience_briefing"):
 		briefing_label.text = am.get_audience_briefing()

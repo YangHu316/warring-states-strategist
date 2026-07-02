@@ -27,3 +27,7 @@ config.cfg
 
 # Claude Code local
 .claude/settings.local.json
+
+# Local asset backups (滚动快照,不入库)
+assets/_backup_*/
+
