@@ -59,17 +59,17 @@
 > **8 模块结构**：角色定位 / 性格画像 / 核心利益 / 可用动作 / 近臣倾向 / 记忆滚动摘要 / 决策规则 / 输出 schema
 > **决策规则优先级**：离间 > 利诱 > 军事施压 > 备战蓄力
 
-### 7. 输出 schema（锁定）
+### 7. 输出 schema（锁定 · v7.3.7 P1-4 英文化）
 
 ```json
 {
   "round": 1 或 2,
-  "target_country": "赵" | "齐",
-  "action": "军事施压" | "遣使离间" | "连横利诱" | "备战蓄力",
+  "target_country": "zhao" | "qi",
+  "action": "qin_military" | "qin_alienate" | "qin_bribe" | "qin_buildup",
   "reason": "≤ 50 字的决策理由（你的内心独白）",
   "confidence": 0-10,
   "expected_effect": "你期望这次动作能带来什么",
-  "settle_decision": "召见" | "决策已定" | null
+  "settle_decision": "audience" | "decision_made" | null
 }
 ```
 
@@ -131,17 +131,17 @@
 > - 当你完全犹豫 → `骑墙观望`（你承认这只是在拖延）
 > - 当第 2 轮仍犹豫 → 状态 `召见`（等纵横家给孤指条路）
 
-### 7. 输出 schema（锁定）
+### 7. 输出 schema（锁定 · v7.3.7 P1-4 英文化）
 
 ```json
 {
   "round": 1 或 2,
-  "target_country": "秦" | "齐",
-  "action": "求盟联齐" | "备战固境" | "遣使试探" | "骑墙观望",
+  "target_country": "qin" | "qi",
+  "action": "zhao_ally" | "zhao_buildup" | "zhao_probe" | "zhao_fence",
   "reason": "≤ 50 字",
   "confidence": 0-10,
   "expected_effect": "...",
-  "settle_decision": "召见" | "决策已定" | null
+  "settle_decision": "audience" | "decision_made" | null
 }
 ```
 
@@ -202,17 +202,17 @@
 > - 战云压境 → `闭门自保`（装作没看见）
 > - 第 2 轮若仍未表态 → 状态 `决策已定`（齐王没兴趣）
 
-### 7. 输出 schema（锁定）
+### 7. 输出 schema（锁定 · v7.3.7 P1-4 英文化）
 
 ```json
 {
   "round": 1 或 2,
-  "target_country": "秦" | "赵",
-  "action": "观望渔利" | "待价而沽" | "趁火打劫" | "闭门自保",
+  "target_country": "qin" | "zhao",
+  "action": "qi_watch" | "qi_sell" | "qi_raid" | "qi_close",
   "reason": "≤ 50 字",
   "confidence": 0-10,
   "expected_effect": "...",
-  "settle_decision": "召见" | "决策已定" | null
+  "settle_decision": "audience" | "decision_made" | null
 }
 ```
 
