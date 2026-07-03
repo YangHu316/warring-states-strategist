@@ -589,21 +589,77 @@ func _confidence(action: String, scores: Dictionary) -> int:
 	return clampi(int(round(s * 3.0)), 1, 10)
 
 # === 台词生成 ===
+# 多句池：每个 action 4 句，按 country 自适应（秦/赵/齐 措辞不同）
+# 随机选一句，避免三国在不同轮次重复同一句叙事
 func _gen_narrative(action: String, target: String) -> String:
 	var name: String = _country_name(country)
 	var tname: String = _country_name(target)
-	match action:
-		"pressure": return "%s陈兵压境，向%s施加军事压力。" % [name, tname]
-		"alienate": return "%s使者暗中活动，欲离间%s与其盟友。" % [name, tname]
-		"lure": return "%s以割地重金利诱%s，欲结连横。" % [name, tname]
-		"prepare": return "%s闭关备战，秣马厉兵。" % name
-		"seek_alliance": return "%s遣使求盟%s，愿共抗强敌。" % [name, tname]
-		"probe": return "%s遣密使潜入%s，探其君意。" % [name, tname]
-		"observation": return "%s按兵不动，观望天下之变。" % name
-		"wait_price": return "%s待价而沽，坐观%s加码。" % [name, tname]
-		"hijack": return "%s见%s衰弱，欲趁火打劫。" % [name, tname]
-		"self_protect": return "%s闭门自保，谢绝外使。" % name
-		_: return "%s未有动作。" % name
+	var pools: Dictionary = {
+		"pressure": [
+			"%s边境突燃烽燧，铁骑滚滚压向%s，函谷关外战鼓频催。" % [name, tname],
+			"%s遣白起之流整军东出，%s边吏告急，求援之书日夜不绝。" % [name, tname],
+			"%s陈兵十万于河西，旌旗蔽日，%s朝堂为之震悚。" % [name, tname],
+			"%s使人扬言伐%s，大军未发而威已至，邯郸城中彻夜不眠。" % [name, tname],
+		],
+		"alienate": [
+			"%s遣纵横之士潜入%s，以黄金珠玉赂其近臣，欲拆其盟约。" % [name, tname],
+			"%s使反间于%s，散布流言，称其将与秦私盟，致同盟离心。" % [name, tname],
+			"%s密使持重金游说%s重臣，许以封邑，欲令其君臣相疑。" % [name, tname],
+			"%s遣人于%s朝堂散布谗言，称其相国暗通敌国，朝议为之纷乱。" % [name, tname],
+		],
+		"lure": [
+			"%s使人赍连横之书入%s，许以河西之地三百里，欲使其背合纵之约。" % [name, tname],
+			"%s遣使遗%s璧玉十双、黄金千镒，言：与秦结好，世享其利。" % [name, tname],
+			"%s以商於之地六百里相诱，邀%s会盟，实欲离其与赵齐之交。" % [name, tname],
+			"%s许%s以太子为质，约结婚姻，欲以恩结而分其合纵之势。" % [name, tname],
+		],
+		"prepare": [
+			"%s闭关息民，广积粟帛，命大将治兵于上党，修车乘、缮甲胄。" % name,
+			"%s下令征发丁壮，凿太行险道，储粮于仓廪，以为持久之计。" % name,
+			"%s使工师督造强弩万张、战车千乘，士卒日操夜练，军容甚整。" % name,
+			"%s遣人入山采铁，冶铸兵刃，又募游士习击刺，以待天下有变。" % name,
+		],
+		"seek_alliance": [
+			"%s遣使奉束帛加璧入%s，泣诉强秦之逼，愿结唇齿之好，共御西邻。" % [name, tname],
+			"%s使平原君之属入%s，约以婚姻，歃血为盟，誓同进退，共抗暴秦。" % [name, tname],
+			"%s遣使持国书入%s，言：秦虎狼也，独力难支，愿修合纵之好。" % [name, tname],
+			"%s使人致书%s，愿割边城以盟，约同出兵救难，永为兄弟之邦。" % [name, tname],
+		],
+		"probe": [
+			"%s遣舌辩之士入%s，假以商贾之名，密探其国虚实与朝议动向。" % [name, tname],
+			"%s使细作潜入%s市井，收买门客，刺其君之喜怒与将帅之名。" % [name, tname],
+			"%s遣使入%s称贺，实观其仓廪士卒，归而具陈虚实，以定后图。" % [name, tname],
+			"%s使人于%s边境佯作游猎，徐察其烽燧守备与民情向背。" % [name, tname],
+		],
+		"observation": [
+			"%s按甲不出，筑台以望四方，曰：天下纷扰，且观孰为先犯者。" % name,
+			"%s令边吏谨守疆界，勿妄动，朝议以为：两虎相斗，姑待其毙。" % name,
+			"%s闭门谢客，唯日览边报，群臣莫测其意，皆以为持重之策。" % name,
+			"%s按兵不动，命人日录列国动静，藏于密室，以待可乘之机。" % name,
+		],
+		"wait_price": [
+			"%s端坐朝堂，笑谓群臣：秦赵相争，吾且观其价，价高者得齐助。" % name,
+			"%s使人数秦赵之使往来，皆待以礼而不许，曰：未至其时也。" % name,
+			"%s令边吏稳守，暗使人于秦赵之间通好意，两受其赂而不结其约。" % name,
+			"%s佯作不知天下之事，实阴使人周旋于秦赵，待价而沽于两强之间。" % name,
+		],
+		"hijack": [
+			"%s见%s新败于秦，国力凋敝，遂发兵袭其边境，夺城数座而归。" % [name, tname],
+			"%s乘%s主力在外，遣轻骑袭其后方，掠其牛马子女以万计。" % [name, tname],
+			"%s闻%s国内有乱，即刻举兵伐之，取边邑三城，以张其势。" % [name, tname],
+			"%s趁%s与第三国鏖战之际，突入其境，割其膏腴之地以为己有。" % [name, tname],
+		],
+		"self_protect": [
+			"%s下令闭关绝使，严守边境，凡外来客旅皆验符盘查，朝议唯求自安。" % name,
+			"%s筑长城于北疆，修关塞于要冲，谢绝列国之使，唯务保境安民。" % name,
+			"%s遣使告于四方：本邦无争霸之心，唯守先王之土，愿各安其境。" % name,
+			"%s令边吏坚壁清野，禁民与外商往来，国中唯以休养生息为务。" % name,
+		],
+	}
+	var arr: Array = pools.get(action, ["%s未有动作。" % name])
+	if arr.is_empty():
+		arr = ["%s未有动作。" % name]
+	return String(arr[randi() % arr.size()])
 
 func _gen_reason(action: String, target: String, ctx: Dictionary) -> String:
 	var stance: String = String(ctx.get("player_stance", ""))
