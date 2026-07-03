@@ -27,11 +27,12 @@ script = ExtResource("1_dlg")
 position = Vector2(800, 450)
 texture = ExtResource("bg_qin")
 
-[node name="Portrait" type="Sprite2D" parent="."]
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="Portrait" type="Sprite2D" parent="UILayer"]
+z_index = 100
 position = Vector2(175, 350)
 scale = Vector2(0.675, 0.675)
-
-[node name="UILayer" type="CanvasLayer" parent="."]
 
 [node name="Root" type="MarginContainer" parent="UILayer"]
 anchors_preset = 15
@@ -45,23 +46,23 @@ theme_override_constants/margin_bottom = 20
 [node name="VBox" type="VBoxContainer" parent="UILayer/Root"]
 theme_override_constants/separation = 10
 
-[node name="TopLabel" type="Label" parent="UILayer/Root/VBox"]
+[node name="TopLabel" type="Label" parent="UILayer"]
+offset_left = 60.0
+offset_top = 20.0
+offset_right = 290.0
+offset_bottom = 60.0
 text = "面谈"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 26
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
 theme_override_styles/normal = SubResource("label_bg_dark")
 
 [node name="NameLabel" type="Label" parent="UILayer"]
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.0
-anchor_right = 0.5
-anchor_bottom = 0.0
-offset_left = -110.0
-offset_top = 60.0
-offset_right = 110.0
-offset_bottom = 100.0
+offset_left = 60.0
+offset_top = 650.0
+offset_right = 290.0
+offset_bottom = 690.0
 text = "..."
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -94,28 +95,44 @@ autowrap_mode = 2
 theme_override_font_sizes/font_size = 15
 theme_override_colors/font_color = Color(0.95, 0.9, 0.7, 1)
 
-[node name="DebatePanel" type="PanelContainer" parent="UILayer/Root/VBox"]
+[node name="ChatBox" type="PanelContainer" parent="UILayer/Root/VBox"]
 visible = false
+custom_minimum_size = Vector2(0, 420)
 
-[node name="DebateVBox" type="VBoxContainer" parent="UILayer/Root/VBox/DebatePanel"]
+[node name="ChatVBox" type="VBoxContainer" parent="UILayer/Root/VBox/ChatBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
 
-[node name="DebateTitle" type="Label" parent="UILayer/Root/VBox/DebatePanel/DebateVBox"]
-text = "殿上辩论"
-theme_override_font_sizes/font_size = 13
-theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
-
-[node name="DebateScroll" type="ScrollContainer" parent="UILayer/Root/VBox/DebatePanel/DebateVBox"]
-custom_minimum_size = Vector2(0, 260)
+[node name="ChatScroll" type="ScrollContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox"]
+layout_mode = 2
+size_flags_vertical = 3
 horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 
-[node name="DebateLog" type="RichTextLabel" parent="UILayer/Root/VBox/DebatePanel/DebateVBox/DebateScroll"]
-custom_minimum_size = Vector2(0, 0)
-theme_override_font_sizes/normal_font_size = 14
-bbcode_enabled = true
-scroll_following = true
-autowrap_mode = 3
-fit_content = true
+[node name="ChatLog" type="VBoxContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox/ChatScroll"]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="StatusBar" type="HBoxContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 32)
+theme_override_constants/separation = 8
+
+[node name="StatusLabel" type="Label" parent="UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+vertical_alignment = 1
+text = "等待开辩…"
+theme_override_font_sizes/font_size = 12
+theme_override_colors/font_color = Color(0.8, 0.8, 0.7, 1)
+
+[node name="EndDebateBtn" type="Button" parent="UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar"]
+layout_mode = 2
+custom_minimum_size = Vector2(120, 32)
+text = "结束辩论"
+theme_override_font_sizes/font_size = 13
 
 [node name="PresetVBox" type="VBoxContainer" parent="UILayer/Root/VBox"]
 theme_override_constants/separation = 6

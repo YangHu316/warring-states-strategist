@@ -698,10 +698,7 @@ func _build_chat_prompt(ctx: Dictionary) -> String:
 		"要求：",
 		"- 严格符合你的性格（雄猜/犹疑/渔利）",
 		"- 若有历史发言，可回应或反驳前一条",
-		"- 目标 target ∈ {qin, zhao, qi, all}",
-		"  · 'all' = 公开宣言（威慑、宣告立场、义正词严的话）",
-		"  · 具体一国 = 私下密语（阴谋交易、试探底线、动之以情、离间之言）——**第三国大概率听不到**",
-		"- 应根据内容选合适的形式：想震慑众人用 all；想私下交易/离间/示好用 target",
+		"- 目标 target ∈ {qin, zhao, qi, all}——'all' 表示对所有国广播",
 		"- 不重复历史内容，说些新话",
 		"",
 		"# 输出（严格 JSON）：",
@@ -730,83 +727,139 @@ func _mock_chat(ctx: Dictionary) -> Dictionary:
 	var arr: Array = pool.get(country, [{"target": "all", "text": "……"}])
 	return arr[randi() % arr.size()]
 
-# === 多轮面谈：君主辩论回应（v7.3.8） ===
-# ctx = {opening, proposed_action, player_stance, event_text, country_attrs, debate_history}
-# callback(msg: Dictionary { text: String, stance_shift: int })
-func debate_reply_async(ctx: Dictionary, callback: Callable) -> void:
+# === v7.3.9 面谈辩论 — 君主对玩家一句话的文言回应 ===
+# ctx = {
+#   player_stance: String ("推合纵" | "推亲秦" | "中立" | ""),
+#   round: int,                  # 第几轮 (1..3)
+#   last_player_msg: String,     # 玩家最新一句
+#   chat_history: Array,         # [{side, name, text}] 全部历史
+# }
+# callback(text: String) — 君主发言；"[END]" 前缀表示君主已做决定，主动结束辩论
+func debate_respond_async(ctx: Dictionary, callback: Callable) -> void:
 	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
 	if llm == null or not llm.is_ready():
 		if callback.is_valid():
-			callback.call({"text": "寡人思之再三，仍不能决。", "stance_shift": 0})
+			callback.call(_mock_debate(ctx))
 		return
-	var prompt: String = _build_debate_reply_prompt(ctx)
-	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 12.0, "temperature": 0.7, "response_json": true},
+	var prompt: String = _build_debate_prompt(ctx)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 10.0, "temperature": 0.85, "response_json": true},
 		func(parsed: Variant, err: String):
 			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 				if callback.is_valid():
-					callback.call({"text": "寡人略有所动，然大势未明。", "stance_shift": 0})
+					callback.call(_mock_debate(ctx))
 				return
 			var text: String = String((parsed as Dictionary).get("text", ""))
-			var shift: int = int((parsed as Dictionary).get("stance_shift", 0))
-			shift = clampi(shift, -1, 1)
+			var ended: bool = bool((parsed as Dictionary).get("end", false))
 			if text == "":
-				text = "……"
+				if callback.is_valid():
+					callback.call(_mock_debate(ctx))
+				return
+			if ended:
+				text = "[END]" + text
 			if callback.is_valid():
-				callback.call({"text": text, "stance_shift": shift})
+				callback.call(text)
 	)
 
-func _build_debate_reply_prompt(ctx: Dictionary) -> String:
-	var role_defs = {
-		"qin": "秦王嬴稷（雄猜多疑，果决霸道）",
-		"zhao": "赵王赵何（犹疑谨慎，怕独战怕激秦）",
-		"qi": "齐王田地（精明渔利，谁给的多帮谁）"
-	}
-	var attrs: Dictionary = ctx.get("country_attrs", {}).get(country, {})
+func _build_debate_prompt(ctx: Dictionary) -> String:
 	var stance: String = String(ctx.get("player_stance", ""))
-	var opening: String = String(ctx.get("opening", ""))
-	var proposed: String = String(ctx.get("proposed_action", ""))
-	var event_text: String = String(ctx.get("event_text", ""))
-	var hist: Array = ctx.get("debate_history", [])
+	var round_num: int = int(ctx.get("round", 1))
+	var role_defs = {
+		"qin": "秦王嬴稷，雄猜之主，霸道果决。核心恐惧=六国合纵。",
+		"zhao": "赵王赵何，犹疑之主，怕独战怕激秦。",
+		"qi": "齐王田地，渔利之主，谁给的多帮谁。"
+	}
+	var stance_hint := "无明显立场"
+	match stance:
+		"推合纵": stance_hint = "纵横家推合纵（联手抗秦）"
+		"推亲秦": stance_hint = "纵横家推亲秦（连横）"
+		"中立": stance_hint = "纵横家中立"
 
 	var hist_lines: Array = []
-	for h in hist:
-		var d: Dictionary = h
-		var side: String = String(d.get("side", ""))  # "player" / "monarch"
-		var text: String = String(d.get("text", ""))
-		if side == "player":
-			hist_lines.append("纵横家：" + text)
-		else:
-			hist_lines.append("你：" + text)
+	for m in ctx.get("chat_history", []):
+		var d: Dictionary = m
+		hist_lines.append("[%s] %s" % [String(d.get("name", "")), String(d.get("text", ""))])
+	var hist_str: String = "\n".join(hist_lines) if hist_lines.size() > 0 else "（尚无）"
 
 	var lines: Array = [
 		"# 世界铁律：只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
 		"",
 		"# 你是",
-		String(role_defs.get(country, country)),
+		String(role_defs.get(country, "一位战国君主")),
+		"你正在与纵横家围绕立场（%s）展开文言辩论。" % stance_hint,
 		"",
-		"# 局势",
-		"你的三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
-		"关键事件：%s" % event_text,
+		"# 历史对话",
+		hist_str,
 		"",
-		"# 你先前提出的行动意图",
-		"opening: " + opening,
-		"proposed_action: " + proposed,
+		"# 纵横家最新一句",
+		String(ctx.get("last_player_msg", "")),
 		"",
-		"# 纵横家开场立场",
-		stance,
-		"",
-		"# 辩论记录（时序）",
-		("\n".join(hist_lines) if hist_lines.size() > 0 else "（尚无发言，纵横家刚表态）"),
-		"",
-		"# 任务",
-		"针对纵横家的最新一轮进言，用文言写一段 ≤ 60 字的回应 text。",
-		"给出 stance_shift ∈ {-1, 0, 1}，表示你被说动几分：",
-		"  +1 = 被说服往纵横家立场靠拢一步",
-		"   0 = 未被打动",
-		"  -1 = 反而更坚持自己原意",
-		"要求：严格符合你的性格。若纵横家反复重复无新论点，多给 0。",
+		"# 你的任务",
+		"生成一句 ≤ 60 字的**文言回应**，第一人称（\"寡人/孤\"），严格符合你的性格。",
+		"要求：",
+		"- 严格按你的人物性格表态",
+		"- 回应纵横家的最新一句",
+		"- 这是第 %d 轮；若你已经做出决定 → 输出 end:true" % round_num,
 		"",
 		"# 输出（严格 JSON）：",
-		'{"text": "≤60 字文言回应", "stance_shift": -1|0|1}'
+		'{"text": "你的文言回应（≤60字）", "end": false}'
 	]
 	return "\n".join(lines)
+
+func _mock_debate(ctx: Dictionary) -> String:
+	var stance: String = String(ctx.get("player_stance", ""))
+	var pool: Dictionary = {
+		"qin": {
+			"推合纵": [
+				"合纵一派皆是虚妄。寡人铁骑之下，谁堪一击？",
+				"竖子何知天下大势？合纵早已名存实亡。",
+				"纵横家之言差矣。秦国兵锋所指，谁敢不从？"
+			],
+			"推亲秦": [
+				"知时务者方为俊杰。足下所言甚合寡人之心。",
+				"善。寡人正欲结交英雄，共图霸业。",
+				"得足下此言，寡人之愿足矣。"
+			],
+			"中立": [
+				"足下既不置可否，寡人便自行定夺。",
+				"既如此，容寡人三思。",
+				"足下此言模棱，寡人难以依从。"
+			]
+		},
+		"zhao": {
+			"推合纵": [
+				"合纵之议，正合孤心。但不知齐王意下如何？",
+				"善！得足下此言，孤心稍安。",
+				"先生所言甚是。唯齐若不至，合纵亦空谈耳。"
+			],
+			"推亲秦": [
+				"孤宁独战，亦不奉秦！",
+				"先生何以出此言？赵虽小，亦有廉颇老将。",
+				"秦欲蚕食六国，孤岂能与虎谋皮？"
+			],
+			"中立": [
+				"足下何以教孤？",
+				"容孤思之。",
+				"既如此，孤再察其变。"
+			]
+		},
+		"qi": {
+			"推合纵": [
+				"合纵虽好，奈齐国何利之有？",
+				"先生欲联赵抗秦，齐可曾获益？",
+				"齐不预合纵之争，先生勿复言。"
+			],
+			"推亲秦": [
+				"秦王之礼甚厚，孤已收下。",
+				"连横之利，齐受之无愧。",
+				"得先生此言，孤可定矣。"
+			],
+			"中立": [
+				"秦赵之争，与齐何干？",
+				"孤只知渔利，余者非所愿闻。",
+				"先生且休言，容孤静观。"
+			]
+		}
+	}
+	var c_pool: Dictionary = pool.get(country, pool["qin"])
+	var s_pool: Array = c_pool.get(stance, c_pool["中立"])
+	return s_pool[randi() % s_pool.size()]

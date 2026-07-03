@@ -1,96 +1,129 @@
 extends RefCounted
-# 纵横家玩家 agent（v7.3.8 多轮面谈用）
-# 职责：接收玩家开场立场 + 上一轮君主发言 → 生成新一轮进言
-
 class_name PlayerAgent
+# 玩家 Agent — 战国纵横家，按玩家立场 (合纵/中立/亲秦) 与君主进行文言博弈
+#
+# v7.3.9 面谈博弈 — dialogue 选 A/B/C 后，玩家 agent 与君主 agent 围绕立场
+# 展开最多 3 轮文言辩论。callback(text: String)，"text" 可能是：
+#  - 文言玩家发言 (≤ 60 字)
+#  - 文本以 "[END]" 前缀 → 表示 agent 认为已达成共识，主动结束辩论
+
+const _STANCE_DESC := {
+	"推合纵": "力主联合赵齐以抗秦",
+	"推亲秦": "力主与秦交好、连横",
+	"中立": "不明确表态、保持中立"
+}
+
+static func make() -> PlayerAgent:
+	return PlayerAgent.new()
 
 # ctx = {
-#   monarch: "qin"/"zhao"/"qi"
-#   opening: 君主开场文本
-#   proposed_action: 君主想采取的行动
-#   player_stance: "推合纵"/"中立"/"推亲秦"
-#   initial_stance_text: 玩家开场选的那段文言
-#   event_text: 关键事件
-#   country_attrs: 三国三维
-#   debate_history: [{side, text, ...}]
+#   player_stance: String ("推合纵" | "推亲秦" | "中立" | ""),
+#   round: int,                    # 第几轮辩论 (1..3)
+#   last_monarch_msg: String,      # 君主最新一句
+#   chat_history: Array,           # [{side, name, text}] 全部历史
+#   country: String                # 君主国 (qin/zhao/qi)
 # }
-# callback(msg: Dictionary { text: String })
-static func speak_async(ctx: Dictionary, callback: Callable) -> void:
+# callback(text: String) — 玩家发言文言；"[END]" 前缀表示结束
+func respond_async(ctx: Dictionary, callback: Callable) -> void:
+	var stance: String = String(ctx.get("player_stance", ""))
 	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
 	if llm == null or not llm.is_ready():
 		if callback.is_valid():
-			callback.call({"text": "臣愚以为此计仍需三思。"})
+			callback.call(_mock_respond(stance))
 		return
 	var prompt: String = _build_prompt(ctx)
-	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 12.0, "temperature": 0.75, "response_json": true},
-		func(parsed: Variant, err: String):
-			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
-				if callback.is_valid():
-					callback.call({"text": "……"})
-				return
-			var text: String = String((parsed as Dictionary).get("text", ""))
-			if text == "":
-				text = "……"
+	llm.request(prompt, {
+		"model": "deepseek-v4-flash",
+		"timeout_sec": 12.0,
+		"temperature": 0.85,
+		"response_json": true
+	}, func(parsed: Variant, err: String):
+		if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
 			if callback.is_valid():
-				callback.call({"text": text})
+				callback.call(_mock_respond(stance))
+			return
+		var text: String = String((parsed as Dictionary).get("text", ""))
+		var ended: bool = bool((parsed as Dictionary).get("end", false))
+		if text == "":
+			if callback.is_valid():
+				callback.call(_mock_respond(stance))
+			return
+		if ended:
+			text = "[END]" + text
+		if callback.is_valid():
+			callback.call(text)
 	)
 
-static func _build_prompt(ctx: Dictionary) -> String:
-	var monarch_names = {"qin": "秦王嬴稷（雄猜多疑）", "zhao": "赵王赵何（犹疑谨慎）", "qi": "齐王田地（精明渔利）"}
-	var monarch: String = String(ctx.get("monarch", ""))
-	var stance: String = String(ctx.get("player_stance", ""))
-	var initial_stance_text: String = String(ctx.get("initial_stance_text", ""))
-	var opening: String = String(ctx.get("opening", ""))
-	var proposed: String = String(ctx.get("proposed_action", ""))
-	var event_text: String = String(ctx.get("event_text", ""))
-	var attrs: Dictionary = ctx.get("country_attrs", {}).get(monarch, {})
-	var hist: Array = ctx.get("debate_history", [])
+func _build_prompt(ctx: Dictionary) -> String:
+	var stance: String = String(ctx.get("player_stance", "中立"))
+	var round_num: int = int(ctx.get("round", 1))
+	var country: String = String(ctx.get("country", ""))
+	var monarch_name: String = _monarch_name(country)
+	var stance_hint: String = String(_STANCE_DESC.get(stance, stance))
 
 	var hist_lines: Array = []
-	for h in hist:
-		var d: Dictionary = h
-		var side: String = String(d.get("side", ""))
-		var text: String = String(d.get("text", ""))
-		if side == "player":
-			hist_lines.append("你（纵横家）：" + text)
-		else:
-			hist_lines.append(String(monarch_names.get(monarch, "君主")) + "：" + text)
-
-	var stance_hint: String = ""
-	match stance:
-		"推合纵": stance_hint = "你的立场是**推合纵抗秦**——不管君主是谁，都要将其引向合纵路线（秦王面前婉言劝缓东出，赵齐面前直言联合）。"
-		"推亲秦": stance_hint = "你的立场是**推亲秦连横**——推动天下向秦倾斜。"
-		"中立": stance_hint = "你保持**中立自保**——权变，不押注。"
+	for m in ctx.get("chat_history", []):
+		var d: Dictionary = m
+		hist_lines.append("[%s] %s" % [String(d.get("name", "")), String(d.get("text", ""))])
+	var hist_str: String = "\n".join(hist_lines) if hist_lines.size() > 0 else "（尚无）"
 
 	var lines: Array = [
 		"# 世界铁律：只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
 		"",
-		"# 你是纵横家",
-		"面见 %s。" % String(monarch_names.get(monarch, monarch)),
-		stance_hint,
+		"# 你是战国时期的纵横家（苏秦张仪一类人物），能言善辩。",
+		"你正在大殿面见%s，你主张「%s」。" % [monarch_name, stance_hint],
+		"你正与君主围绕你的立场展开文言博弈。",
 		"",
-		"# 局势",
-		"该君主三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
-		"关键事件：%s" % event_text,
+		"# 历史对话",
+		hist_str,
 		"",
-		"# 君主开场",
-		"opening: " + opening,
-		"proposed_action: " + proposed,
+		"# 君主最新一句",
+		String(ctx.get("last_monarch_msg", "")),
 		"",
-		"# 你的开场立场稿（供参考，可延伸）",
-		initial_stance_text,
-		"",
-		"# 辩论记录（时序）",
-		("\n".join(hist_lines) if hist_lines.size() > 0 else "（尚无发言，你先要开口）"),
-		"",
-		"# 任务",
-		"用文言写一段 ≤ 60 字的进言 text——**紧扣你的立场**，回应君主上一轮的说法（若有）。",
+		"# 你的任务",
+		"按你的立场（%s）生成一句 ≤ 60 字的**文言回应**，第一人称（\"臣\"）。" % stance,
 		"要求：",
-		"- 每轮都要有新论点（引用先例、诉诸利害、动之以情，都可以）",
-		"- 用词讲究，符合游说之士的风度",
-		"- 不能改变立场（一以贯之）",
+		"- 立场坚定，不首鼠两端",
+		"- 直接回应君主最新一句的质疑或接纳",
+		"- 用文言，符合面见君王的礼节",
+		"- 这是第 %d 轮；若你觉得已经说服君主（或君主已定）→ 输出 end:true" % round_num,
 		"",
 		"# 输出（严格 JSON）：",
-		'{"text": "≤60 字文言进言"}'
+		'{"text": "你的文言回应（≤60字）", "end": false}'
 	]
 	return "\n".join(lines)
+
+func _mock_respond(stance: String) -> String:
+	var pool: Dictionary = {
+		"推合纵": [
+			"合纵之利，六国共沾。赵齐唇齿相依，正当共拒强秦。",
+			"臣以合纵为上策，愿大王俯纳。",
+			"大王之言差矣。秦虽强，以六国之力合而抗之，可保社稷。"
+		],
+		"推亲秦": [
+			"连横之利，显而易见。与秦交好，可保一时之安。",
+			"臣以为与秦通好方为上策。",
+			"秦王雄才大略，正当因势利导。"
+		],
+		"中立": [
+			"臣愚未敢妄决，容臣细思再禀。",
+			"此事重大，臣不敢轻言。",
+			"愿大王察国情而定，臣但听凭裁断。"
+		]
+	}
+	var arr: Array = pool.get(stance, pool["中立"])
+	return arr[randi() % arr.size()]
+
+static func _monarch_name(c: String) -> String:
+	match c:
+		"qin": return "秦王嬴稷"
+		"zhao": return "赵王赵何"
+		"qi": return "齐王田地"
+		_: return c
+
+static func _country_name(c: String) -> String:
+	match c:
+		"qin": return "秦"
+		"zhao": return "赵"
+		"qi": return "齐"
+		_: return c
