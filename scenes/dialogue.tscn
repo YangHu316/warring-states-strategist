@@ -134,55 +134,67 @@ custom_minimum_size = Vector2(120, 32)
 text = "结束辩论"
 theme_override_font_sizes/font_size = 13
 
-[node name="InterceptPanel" type="PanelContainer" parent="UILayer/Root/VBox"]
+[node name="InterceptPanel" type="PanelContainer" parent="UILayer"]
 visible = false
+z_index = 200
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -180.0
+offset_right = 280.0
+offset_bottom = 180.0
+theme_override_styles/panel = SubResource("label_bg_dark")
 
-[node name="InterceptVBox" type="VBoxContainer" parent="UILayer/Root/VBox/InterceptPanel"]
-theme_override_constants/separation = 6
+[node name="InterceptVBox" type="VBoxContainer" parent="UILayer/InterceptPanel"]
+theme_override_constants/separation = 8
 
-[node name="InterceptTitle" type="Label" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
-text = "谋士拟稿（3 秒后自动进言，可补充指令）"
-theme_override_font_sizes/font_size = 13
+[node name="InterceptTitle" type="Label" parent="UILayer/InterceptPanel/InterceptVBox"]
+text = "谋士拟稿（3 秒后自动进言）"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
 
-[node name="InterceptDraftLabel" type="Label" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
-custom_minimum_size = Vector2(0, 60)
+[node name="InterceptDraftLabel" type="Label" parent="UILayer/InterceptPanel/InterceptVBox"]
+custom_minimum_size = Vector2(540, 80)
 text = ""
 autowrap_mode = 2
 theme_override_font_sizes/font_size = 15
 theme_override_colors/font_color = Color(0.95, 0.95, 0.75, 1)
 
-[node name="InterceptCountdownLabel" type="Label" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
+[node name="InterceptCountdownLabel" type="Label" parent="UILayer/InterceptPanel/InterceptVBox"]
 text = "3"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(1, 0.75, 0.15, 1)
 
-[node name="InterceptHBox" type="HBoxContainer" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
+[node name="InterceptHBox" type="HBoxContainer" parent="UILayer/InterceptPanel/InterceptVBox"]
 theme_override_constants/separation = 8
 
-[node name="InterceptOkBtn" type="Button" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptHBox"]
+[node name="InterceptOkBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox/InterceptHBox"]
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 40)
 text = "就这样进言"
 theme_override_font_sizes/font_size = 14
 
-[node name="InterceptAddBtn" type="Button" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptHBox"]
+[node name="InterceptAddBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox/InterceptHBox"]
 size_flags_horizontal = 3
 custom_minimum_size = Vector2(0, 40)
-text = "有补充"
+text = "我有补充"
 theme_override_font_sizes/font_size = 14
 
-[node name="InterceptInputBox" type="TextEdit" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
+[node name="InterceptInputBox" type="TextEdit" parent="UILayer/InterceptPanel/InterceptVBox"]
 visible = false
-custom_minimum_size = Vector2(0, 80)
-placeholder_text = "对谋士下指令（白话）：比如'再犀利一点'、'提到齐王贪利'、'诉诸唇亡齿寒'…"
+custom_minimum_size = Vector2(540, 90)
+placeholder_text = "对谋士下指令（白话）：比如'再犀利点'、'提到齐王贪利'、'诉诸唇亡齿寒'…"
 wrap_mode = 1
 
-[node name="InterceptRegenBtn" type="Button" parent="UILayer/Root/VBox/InterceptPanel/InterceptVBox"]
+[node name="InterceptRegenBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox"]
 visible = false
 custom_minimum_size = Vector2(0, 40)
-text = "让谋士重拟"
+text = "发给谋士"
 theme_override_font_sizes/font_size = 14
 
 [node name="PresetVBox" type="VBoxContainer" parent="UILayer/Root/VBox"]
