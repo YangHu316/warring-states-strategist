@@ -385,15 +385,17 @@ func _round_to_month(rn: int) -> int:
 
 # 校验 LLM 输出的 action 字段合法
 func _validate_llm_action(parsed: Dictionary, ctx: Dictionary) -> Dictionary:
-	var target: String = String(parsed.get("target_country", ""))
-	var atype: String = String(parsed.get("action_type", ""))
+	# 用 str() 而非 String() —— LLM 可能返回非标量类型（StringName/null/Dictionary），
+	# String() 构造器对部分 Variant 类型会触发 "Invalid call 'String' constructor"
+	var target: String = str(parsed.get("target_country", ""))
+	var atype: String = str(parsed.get("action_type", ""))
 	var valid_actions: Array = persona.get("actions", [])
 	if not (target in ["qin", "zhao", "qi"]) or target == country:
 		return {}
 	if not (atype in valid_actions):
 		return {}
 	var round_num: int = int(ctx.get("round", 1))
-	var settle_hint: String = String(parsed.get("settle_hint", "summon"))
+	var settle_hint: String = str(parsed.get("settle_hint", "summon"))
 	if not (settle_hint in ["summon", "decided"]):
 		settle_hint = "summon"
 	return {
@@ -401,8 +403,8 @@ func _validate_llm_action(parsed: Dictionary, ctx: Dictionary) -> Dictionary:
 		"target_country": target,
 		"action_type": atype,
 		"round": round_num,
-		"reason": String(parsed.get("reason", "")),
-		"narrative": String(parsed.get("narrative", _gen_narrative(atype, target))),
+		"reason": str(parsed.get("reason", "")),
+		"narrative": str(parsed.get("narrative", _gen_narrative(atype, target))),
 		"expected_settle": settle_hint if round_num >= 2 else "",
 		"confidence": clampi(int(parsed.get("confidence", 5)), 1, 10)
 	}
