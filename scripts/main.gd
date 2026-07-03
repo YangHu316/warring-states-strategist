@@ -33,10 +33,23 @@ extends Node2D
 @onready var area_qin: Area2D = $MapLayer/NodeQin/AreaQin
 @onready var area_zhao: Area2D = $MapLayer/NodeZhao/AreaZhao
 @onready var area_qi: Area2D = $MapLayer/NodeQi/AreaQi
+@onready var map_layer: Node2D = $MapLayer
 
 
 # Chinese font for CJK display support
 var _chinese_font: Font
+
+# 召见标记：country -> Sprite2D（红色感叹号，城池右上角）
+# 召见触发时显示；玩家进入该国 dialogue 时隐藏
+var _summon_marks: Dictionary = {}
+# 密信标记列表：每条私谓事件在两城池中点生成一个 SecretLetterMark
+var _secret_letter_marks: Array = []
+# 本回合是否已自然生成过密信（chat_message 触发）；用于 _on_all_finished 兜底
+var _turn_secret_letter_spawned: bool = false
+# v7.3.10：玩家是否正在 dialogue 场景（用于约束地图事件只在主地图出现）
+var _in_dialogue: bool = false
+# 待弹召见通知（若召见触发时玩家正在 dialogue，延后到回主地图再弹）
+var _pending_summon_notice: String = ""
 
 var country_positions: Dictionary = {
 	"qin": Vector2(280, 460),
@@ -106,6 +119,9 @@ func _ready() -> void:
 	chatroom_toggle.pressed.connect(_toggle_chatroom_panel)
 	if summon_confirm_btn != null:
 		summon_confirm_btn.pressed.connect(_on_summon_notice_confirm)
+
+	# 初始化 3 个城池的召见红色感叹号标记（初始隐藏）
+	_init_summon_marks()
 
 	# 点击地图节点 — 采用 input_event
 	area_qin.input_event.connect(func(_v, ev, _s): _on_node_click_event("qin", ev))
@@ -512,6 +528,8 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		return
 	var d = dscn.instantiate()
 	get_tree().root.add_child(d)
+	# v7.3.10：进入 dialogue 场景 —— 标记位 + 隐藏所有大地图专属 UI/标记
+	_in_dialogue = true
 	# 进入对话 → 隐藏大地图专属 UI（事件框/回合大信息/国家信息面板/三国朝议）
 	# 防止 dialogue 场景的 VBox 压在 main 的 TopBar/KeyEventBanner 上；
 	# 三国朝议在对话中已经被 ChatBox 取代，整个 panel 隐藏
@@ -529,6 +547,12 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		hand_panel.visible = false
 	if action_buttons_vbox != null:
 		action_buttons_vbox.visible = false
+	# v7.3.10：玩家进入该国对话 → 隐藏所有召见标记（红感叹号不可在其他界面出现）
+	_hide_all_summon_marks()
+	# v7.3.10：dialogue 期间隐藏所有密信图标 + 召见通知（防遮挡 / 不可在其他界面出现）
+	_set_secret_letters_visible(false)
+	if summon_notice != null:
+		summon_notice.visible = false
 	if d.has_method("setup"):
 		d.setup(country, _current_event_text, mode)
 	if d.has_signal("audience_settled"):
@@ -541,6 +565,8 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		d.dialogue_finished.connect(func(country2: String, _verdict: String):
 			if d != null and is_instance_valid(d):
 				d.queue_free()
+			# v7.3.10：离开 dialogue 场景 —— 清标记位 + 恢复所有大地图专属 UI/标记
+			_in_dialogue = false
 			# 恢复大地图专属 UI
 			if event_stream_panel != null:
 				event_stream_panel.visible = true
@@ -560,6 +586,14 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 			_refresh_top_bar()
 			_check_death_and_react()
 			State.country_states[country2] = "done"
+			# v7.3.10：回主地图 → 恢复密信图标 + 智能恢复召见标记（只对仍 summon 的亮）
+			_set_secret_letters_visible(true)
+			_refresh_all_summon_marks()
+			# v7.3.10：若有延后的召见通知，现在弹出
+			if _pending_summon_notice != "":
+				var pending: String = _pending_summon_notice
+				_pending_summon_notice = ""
+				_pop_summon_notice(pending)
 		)
 
 func _pop_decided_modal(country: String) -> void:
@@ -638,12 +672,20 @@ func _on_country_finished(country: String, settle: String) -> void:
 	_update_country_status_labels()
 	# 仅当该国首次被召见（且未被处理过）时弹中央通知；后续反应轮不再弹
 	if settle == "summon" and String(State.country_states.get(country, "")) != "done":
-		_pop_summon_notice(country)
+		# v7.3.10：若玩家正在 dialogue 场景，延后弹召见通知到回主地图时
+		if _in_dialogue:
+			_pending_summon_notice = country
+		else:
+			_pop_summon_notice(country)
+		# 城池图标右上角亮红色感叹号（v7.3.10：地图可点击事件）
+		_show_summon_mark(country)
 
 func _on_all_finished() -> void:
 	next_turn_button.disabled = false
 	push_event("三对均结，可进入下回合", EventType.WORLD)
 	_update_country_status_labels()
+	# v7.3.10：兜底 —— 若本回合无自然 chat_message 触发密信，生成一封"密语风闻"
+	_spawn_fallback_secret_letter()
 
 func _update_country_status_labels() -> void:
 	if typeof(AgentManager) != TYPE_OBJECT:
@@ -762,6 +804,11 @@ func _go_ending(kind: String, detail: String) -> void:
 
 func _on_turn_started(round_num: int) -> void:
 	_refresh_top_bar()
+	# v7.3.10：每轮开始时清理上一轮的密信图标（避免地图堆积过多）
+	_clear_secret_letters()
+	# v7.3.10：保证本回合至少有一封密信事件 —— 若第一轮无 chat_message 触发,
+	# 在回合结束时由 _on_all_finished 兜底生成一封"密语风闻"
+	_turn_secret_letter_spawned = false
 
 func _on_phase_changed(p: String) -> void:
 	print("[Phase] %s round=%d" % [p, State.current_round])
@@ -849,6 +896,8 @@ func _on_chat_message(country: String, target: String, text: String, is_public: 
 	else:
 		# 私聊：暗字 + 斜体
 		chatroom_log.append_text("[color=#888888][i]%s %s[/i][/color]\n" % [header, text])
+		# v7.3.10：私谓事件在地图两城池中点生成可点击密信图标
+		_spawn_secret_letter(country, target, text)
 
 # v7.3.9：把 agent_action 的 narrative 推进朝议（统一入口）
 func _append_chatroom(country: String, text: String) -> void:
@@ -872,6 +921,243 @@ func _pop_summon_notice(country: String) -> void:
 func _on_summon_notice_confirm() -> void:
 	if summon_notice != null:
 		summon_notice.visible = false
+
+# === 召见标记 + 密信标记（v7.3.10：地图可点击事件） ===
+
+# 初始化 3 个城池的红色感叹号标记（城池右上角，初始隐藏）
+func _init_summon_marks() -> void:
+	if map_layer == null:
+		return
+	for c in ["qin", "zhao", "qi"]:
+		var node: Sprite2D = get_node_or_null("MapLayer/Node%s" % _country_cap(c))
+		if node == null:
+			continue
+		var mark: Label = Label.new()
+		mark.name = "SummonMark"
+		mark.text = "!"
+		mark.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
+		mark.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		mark.add_theme_constant_override("outline_size", 4)
+		mark.add_theme_font_size_override("font_size", 160)
+		# 标记位于城池右上角偏移（城池 Sprite2D 原点居中，向右上偏 70px）
+		mark.position = Vector2(60, -100)
+		mark.z_index = 50
+		mark.visible = false
+		node.add_child(mark)
+		_summon_marks[c] = mark
+
+# 国名首字母大写（用于拼节点路径 NodeQin/NodeZhao/NodeQi）
+static func _country_cap(c: String) -> String:
+	match c:
+		"qin": return "Qin"
+		"zhao": return "Zhao"
+		"qi": return "Qi"
+		_: return c.capitalize()
+
+# 显示某国召见标记（红感叹号）
+func _show_summon_mark(country: String) -> void:
+	var mark: Label = _summon_marks.get(country, null)
+	if mark != null:
+		mark.visible = true
+
+# 隐藏某国召见标记
+func _hide_summon_mark(country: String) -> void:
+	var mark: Label = _summon_marks.get(country, null)
+	if mark != null:
+		mark.visible = false
+
+# v7.3.10：隐藏所有召见标记（dialogue 期间调用 —— 红感叹号不可在其他界面出现）
+func _hide_all_summon_marks() -> void:
+	for c in _summon_marks.keys():
+		var mark: Label = _summon_marks[c]
+		if mark != null:
+			mark.visible = false
+
+# v7.3.10：智能恢复召见标记 —— 只对仍处于 summon 状态且未 done 的国家亮起
+# 调用时机：回主地图时（dialogue_finished）/ _on_all_finished 兜底
+func _refresh_all_summon_marks() -> void:
+	if typeof(AgentManager) != TYPE_OBJECT:
+		return
+	for c in ["qin", "zhao", "qi"]:
+		var mark: Label = _summon_marks.get(c, null)
+		if mark == null:
+			continue
+		# 已被玩家处理过的国家 → 不亮
+		if String(State.country_states.get(c, "")) == "done":
+			mark.visible = false
+			continue
+		# 当前 AgentManager 状态仍是 summon → 亮
+		var st: String = ""
+		if AgentManager.has_method("get_country_status"):
+			st = AgentManager.get_country_status(c)
+		mark.visible = (st == "召见")
+
+# === 密信标记（私谓事件在两城池中点生成可点击图标） ===
+# 每条密信标记 = Sprite2D 背景 + 红色感叹号 + 点击 Area2D
+# 点击弹出"密信"文本框（PanelContainer 居中）
+
+# 在两城池中点创建一个密信图标
+func _spawn_secret_letter(speaker: String, target: String, text: String) -> void:
+	if map_layer == null:
+		return
+	var pos_a: Vector2 = country_positions.get(speaker, Vector2.ZERO)
+	var pos_b: Vector2 = country_positions.get(target, Vector2.ZERO)
+	var mid: Vector2 = (pos_a + pos_b) / 2.0
+	# 创建图标容器（Button 即可点击，用图形/文字代替纹理）
+	var btn: Button = Button.new()
+	btn.text = "✉"
+	btn.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	btn.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	btn.add_theme_constant_override("outline_size", 4)
+	btn.add_theme_font_size_override("font_size", 24)
+	btn.custom_minimum_size = Vector2(44, 44)
+	btn.position = mid - Vector2(22, 22)
+	btn.z_index = 40
+	# 红色感叹号子节点（右上角）
+	var exclam: Label = Label.new()
+	exclam.text = "!"
+	exclam.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
+	exclam.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	exclam.add_theme_constant_override("outline_size", 3)
+	exclam.add_theme_font_size_override("font_size", 18)
+	exclam.position = Vector2(28, -8)
+	exclam.z_index = 41
+	btn.add_child(exclam)
+	# 点击 → 弹密信文本框；点开后奖励 1 张情报牌，"阅"后从地图移除图标
+	var header: String = "[ %s 私谓 %s ]" % [_country_name(speaker), _country_name(target)]
+	btn.pressed.connect(func(): _pop_secret_letter(header, text, speaker, target, btn))
+	map_layer.add_child(btn)
+	_secret_letter_marks.append(btn)
+	_turn_secret_letter_spawned = true
+
+# 清理上一轮的密信图标（每轮开始时调用）
+func _clear_secret_letters() -> void:
+	for btn in _secret_letter_marks:
+		if is_instance_valid(btn):
+			btn.queue_free()
+	_secret_letter_marks.clear()
+	_turn_secret_letter_spawned = false
+
+# v7.3.10：批量显隐所有密信图标（dialogue 期间隐藏，回主地图恢复）
+func _set_secret_letters_visible(vis: bool) -> void:
+	for btn in _secret_letter_marks:
+		if is_instance_valid(btn):
+			btn.visible = vis
+
+# v7.3.10：从地图移除指定密信 button（点击"阅"后调用）
+func _remove_secret_letter(btn: Button) -> void:
+	var idx: int = _secret_letter_marks.find(btn)
+	if idx >= 0:
+		_secret_letter_marks.remove_at(idx)
+	if is_instance_valid(btn):
+		btn.queue_free()
+
+
+# 兜底：本回合无自然 chat_message 时，生成一封"密语风闻"密信
+func _spawn_fallback_secret_letter() -> void:
+	if _turn_secret_letter_spawned:
+		return
+	if map_layer == null:
+		return
+	# 随机选两国做密信双方（保证不是同一国）
+	var pairs: Array = [["qin", "zhao"], ["qin", "qi"], ["zhao", "qi"]]
+	var pair: Array = pairs[randi() % pairs.size()]
+	var speaker: String = pair[0]
+	var target: String = pair[1]
+	# 风闻池（不基于真实 chat，纯环境氛围）
+	var rumors: Array = [
+		"%s遣客卿夜入%s都城，密会其近臣，所谋未明。",
+		"%s斥候于%s边境见车马往来，疑有私约。",
+		"%s市井间传%s使者曾入相府，事秘不可闻。",
+		"%s密使持帛书入%s，归后不言其事，朝议纷纭。",
+	]
+	var tmpl: String = rumors[randi() % rumors.size()]
+	var body: String = tmpl % [_country_name(speaker), _country_name(target)]
+	_spawn_secret_letter(speaker, target, body)
+
+
+# 弹出"密信"文本框（屏幕中央，按"阅"关闭）
+# v7.3.10：首次点开密信奖励 1 张情报牌（用 _secret_claimed 防重复领取）
+var _secret_claimed: Dictionary = {}  # header -> bool
+func _pop_secret_letter(header: String, body: String, speaker: String = "", target: String = "", btn: Button = null) -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 15
+	add_child(layer)
+	# CanvasLayer 不是 Control，其下的 Control 节点不能用 anchor —— 必须先挂一个 Control 根
+	var root: Control = Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+	var dim: ColorRect = ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	var panel: PanelContainer = PanelContainer.new()
+	# 屏幕正中央：anchor 四边中点 0.5，offset 反向半个尺寸
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.custom_minimum_size = Vector2(560, 280)
+	panel.offset_left = -280.0   # -custom_min_size.x / 2
+	panel.offset_top = -140.0   # -custom_min_size.y / 2
+	panel.offset_right = 280.0
+	panel.offset_bottom = 140.0
+	panel.z_index = 16
+	root.add_child(panel)
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	var title: Label = Label.new()
+	title.text = "密信"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
+	title.add_theme_font_size_override("font_size", 22)
+	vbox.add_child(title)
+	var from: Label = Label.new()
+	from.text = header
+	from.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	from.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+	from.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(from)
+	var body_label: Label = Label.new()
+	body_label.text = body
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.8))
+	body_label.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(body_label)
+	# v7.3.10：首次点开 → 奖励 1 张情报牌
+	var claimed_label: Label = Label.new()
+	claimed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	claimed_label.add_theme_font_size_override("font_size", 13)
+	claimed_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(claimed_label)
+	if not _secret_claimed.get(header, false) and speaker != "" and target != "":
+		var intel_text: String = "[密信·%s→%s] %s" % [_country_name(speaker), _country_name(target), body]
+		State.intel_hand.append(intel_text)
+		_secret_claimed[header] = true
+		claimed_label.text = "【截获密信，已入情报手牌】"
+		claimed_label.add_theme_color_override("font_color", Color(0.6, 1, 0.6))
+		_refresh_hand_ui()
+	elif _secret_claimed.get(header, false):
+		claimed_label.text = "【此信已阅】"
+		claimed_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	var close_btn: Button = Button.new()
+	close_btn.text = "阅"
+	close_btn.custom_minimum_size = Vector2(120, 36)
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.pressed.connect(func():
+		layer.queue_free()
+		# v7.3.10：点"阅"后从地图移除密信图标
+		if btn != null and is_instance_valid(btn):
+			_remove_secret_letter(btn)
+	)
+	vbox.add_child(close_btn)
+	layer.add_child(panel)
+
+
 
 const _CHATROOM_COLLAPSED_BOTTOM: float = 150.0
 const _CHATROOM_EXPANDED_BOTTOM: float = 400.0

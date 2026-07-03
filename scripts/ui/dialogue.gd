@@ -106,6 +106,8 @@ func setup(c: String, ev_text: String, m: String = "summon") -> void:
 	if tex != null:
 		portrait.texture = tex
 	# 大殿背景按国家切换（秦/赵/齐 三张 02 大殿美术，v7.3.7 美术迭代）
+	# v7.3.10：动态计算 bg.scale 使背景铺满整个屏幕（cover 模式）
+	# 三张原图分辨率不同，硬编码 scale 会导致显示大小不一致
 	var bg_path: String = "res://assets/bg/dialogue_%s.png" % c
 	var bg_tex: Texture2D = load(bg_path)
 	if bg_tex != null:
@@ -115,6 +117,17 @@ func setup(c: String, ev_text: String, m: String = "summon") -> void:
 		var fb: Texture2D = load("res://assets/bg/dialogue_qin.png")
 		if fb != null:
 			bg.texture = fb
+	# 动态计算 scale 让背景铺满屏幕（cover：取较大比例保证无黑边）
+	if bg.texture != null:
+		var vp_size: Vector2 = get_viewport_rect().size
+		var tex_size: Vector2 = bg.texture.get_size()
+		if tex_size.x > 0 and tex_size.y > 0:
+			var sx: float = vp_size.x / tex_size.x
+			var sy: float = vp_size.y / tex_size.y
+			var s: float = maxf(sx, sy)
+			bg.scale = Vector2(s, s)
+			# 居中（Sprite2D 原点在纹理中心）
+			bg.position = vp_size / 2.0
 	var am = get_node_or_null("/root/AgentManager")
 	if am != null and am.has_method("get_audience_briefing_async"):
 		briefing_label.text = "（史官正为你总结局势……）"
