@@ -764,17 +764,21 @@ static func _country_name(c: String) -> String:
 # === 三国朝议聊天室（v7.3.8） ===
 var _chatroom_expanded: bool = false
 
-func _on_chat_message(country: String, target: String, text: String) -> void:
+func _on_chat_message(country: String, target: String, text: String, is_public: bool = true) -> void:
 	if chatroom_log == null:
 		return
 	var color_map := {"qin": "#ff9060", "zhao": "#66d0ff", "qi": "#a0ff90"}
 	var color: String = String(color_map.get(country, "#dddddd"))
-	var to_str: String = ""
-	if target != "" and target != "all":
-		to_str = " → " + _country_name(target)
+	var header: String = ""
+	if is_public:
+		header = "[%s 谓众]" % _country_name(country)
 	else:
-		to_str = "（对众）"
-	chatroom_log.append_text("[color=%s][%s%s][/color] %s\n" % [color, _country_name(country), to_str, text])
+		header = "[%s 私谓 %s]" % [_country_name(country), _country_name(target)]
+	if is_public:
+		chatroom_log.append_text("[color=%s]%s[/color] %s\n" % [color, header, text])
+	else:
+		# 私聊：暗字 + 斜体
+		chatroom_log.append_text("[color=#888888][i]%s %s[/i][/color]\n" % [header, text])
 
 func _toggle_chatroom_panel() -> void:
 	_chatroom_expanded = not _chatroom_expanded

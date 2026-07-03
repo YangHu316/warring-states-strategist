@@ -698,7 +698,10 @@ func _build_chat_prompt(ctx: Dictionary) -> String:
 		"要求：",
 		"- 严格符合你的性格（雄猜/犹疑/渔利）",
 		"- 若有历史发言，可回应或反驳前一条",
-		"- 目标 target ∈ {qin, zhao, qi, all}——'all' 表示对所有国广播",
+		"- 目标 target ∈ {qin, zhao, qi, all}",
+		"  · 'all' = 公开宣言（威慑、宣告立场、义正词严的话）",
+		"  · 具体一国 = 私下密语（阴谋交易、试探底线、动之以情、离间之言）——**第三国大概率听不到**",
+		"- 应根据内容选合适的形式：想震慑众人用 all；想私下交易/离间/示好用 target",
 		"- 不重复历史内容，说些新话",
 		"",
 		"# 输出（严格 JSON）：",
@@ -726,3 +729,84 @@ func _mock_chat(ctx: Dictionary) -> Dictionary:
 	}
 	var arr: Array = pool.get(country, [{"target": "all", "text": "……"}])
 	return arr[randi() % arr.size()]
+
+# === 多轮面谈：君主辩论回应（v7.3.8） ===
+# ctx = {opening, proposed_action, player_stance, event_text, country_attrs, debate_history}
+# callback(msg: Dictionary { text: String, stance_shift: int })
+func debate_reply_async(ctx: Dictionary, callback: Callable) -> void:
+	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
+	if llm == null or not llm.is_ready():
+		if callback.is_valid():
+			callback.call({"text": "寡人思之再三，仍不能决。", "stance_shift": 0})
+		return
+	var prompt: String = _build_debate_reply_prompt(ctx)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 12.0, "temperature": 0.7, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				if callback.is_valid():
+					callback.call({"text": "寡人略有所动，然大势未明。", "stance_shift": 0})
+				return
+			var text: String = String((parsed as Dictionary).get("text", ""))
+			var shift: int = int((parsed as Dictionary).get("stance_shift", 0))
+			shift = clampi(shift, -1, 1)
+			if text == "":
+				text = "……"
+			if callback.is_valid():
+				callback.call({"text": text, "stance_shift": shift})
+	)
+
+func _build_debate_reply_prompt(ctx: Dictionary) -> String:
+	var role_defs = {
+		"qin": "秦王嬴稷（雄猜多疑，果决霸道）",
+		"zhao": "赵王赵何（犹疑谨慎，怕独战怕激秦）",
+		"qi": "齐王田地（精明渔利，谁给的多帮谁）"
+	}
+	var attrs: Dictionary = ctx.get("country_attrs", {}).get(country, {})
+	var stance: String = String(ctx.get("player_stance", ""))
+	var opening: String = String(ctx.get("opening", ""))
+	var proposed: String = String(ctx.get("proposed_action", ""))
+	var event_text: String = String(ctx.get("event_text", ""))
+	var hist: Array = ctx.get("debate_history", [])
+
+	var hist_lines: Array = []
+	for h in hist:
+		var d: Dictionary = h
+		var side: String = String(d.get("side", ""))  # "player" / "monarch"
+		var text: String = String(d.get("text", ""))
+		if side == "player":
+			hist_lines.append("纵横家：" + text)
+		else:
+			hist_lines.append("你：" + text)
+
+	var lines: Array = [
+		"# 世界铁律：只有秦、赵、齐三国。可提及张仪、魏冉、平原君、廉颇、孟尝君。",
+		"",
+		"# 你是",
+		String(role_defs.get(country, country)),
+		"",
+		"# 局势",
+		"你的三维：国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
+		"关键事件：%s" % event_text,
+		"",
+		"# 你先前提出的行动意图",
+		"opening: " + opening,
+		"proposed_action: " + proposed,
+		"",
+		"# 纵横家开场立场",
+		stance,
+		"",
+		"# 辩论记录（时序）",
+		("\n".join(hist_lines) if hist_lines.size() > 0 else "（尚无发言，纵横家刚表态）"),
+		"",
+		"# 任务",
+		"针对纵横家的最新一轮进言，用文言写一段 ≤ 60 字的回应 text。",
+		"给出 stance_shift ∈ {-1, 0, 1}，表示你被说动几分：",
+		"  +1 = 被说服往纵横家立场靠拢一步",
+		"   0 = 未被打动",
+		"  -1 = 反而更坚持自己原意",
+		"要求：严格符合你的性格。若纵横家反复重复无新论点，多给 0。",
+		"",
+		"# 输出（严格 JSON）：",
+		'{"text": "≤60 字文言回应", "stance_shift": -1|0|1}'
+	]
+	return "\n".join(lines)

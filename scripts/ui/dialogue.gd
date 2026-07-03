@@ -14,6 +14,17 @@ var _presets_ready: bool = false
 var _stance_a: String = ""
 var _stance_b: String = ""
 var _stance_c: String = ""
+var _advisor_text: String = ""
+
+# v7.3.8 多轮辩论
+const PlayerAgentScript = preload("res://scripts/core/player_agent.gd")
+const MAX_DEBATE_TURNS: int = 5
+var _initial_stance: String = ""       # 玩家开场立场：推合纵/中立/推亲秦
+var _initial_stance_text: String = ""  # 玩家开场那段文言
+var _debate_history: Array = []        # [{side, text, stance_shift}]
+var _debate_turn: int = 0
+var _cumulative_shift: int = 0         # 君主 stance 累积变化
+var _consecutive_zero: int = 0         # 连续 stance_shift=0 计数（早停）
 
 @onready var top_label: Label = $UILayer/Root/VBox/TopLabel
 @onready var name_label: Label = $UILayer/NameLabel
@@ -35,8 +46,8 @@ var _stance_c: String = ""
 @onready var result_label: Label = $UILayer/Root/VBox/ResultLabel
 @onready var portrait: Sprite2D = $Portrait
 @onready var bg: Sprite2D = $BG
-
-var _advisor_text: String = ""
+@onready var debate_panel: PanelContainer = $UILayer/Root/VBox/DebatePanel
+@onready var debate_log: RichTextLabel = $UILayer/Root/VBox/DebatePanel/DebateVBox/DebateScroll/DebateLog
 
 func _ready() -> void:
 	submit_btn.pressed.connect(_on_submit)
@@ -228,8 +239,8 @@ func _build_proposal_prompt() -> String:
 	]
 	return "\n".join(lines)
 
-# === 玩家表态 ===
-func _on_preset(_stance_label: String, stance_text: String) -> void:
+# === 玩家表态：启动多轮辩论 ===
+func _on_preset(stance_label: String, stance_text: String) -> void:
 	if _submitted or not _presets_ready:
 		return
 	_submitted = true
@@ -237,10 +248,107 @@ func _on_preset(_stance_label: String, stance_text: String) -> void:
 	preset_b_btn.disabled = true
 	preset_c_btn.disabled = true
 	others_btn.disabled = true
-	input_box.text = stance_text
-	input_box.visible = true
-	input_box.editable = false
-	_send_to_verdict(stance_text)
+	_initial_stance = stance_label
+	_initial_stance_text = stance_text
+	_start_debate()
+
+func _start_debate() -> void:
+	# 隐藏预设/输入区，显示辩论滚动区
+	preset_vbox.visible = false
+	input_box.visible = false
+	submit_hbox.visible = false
+	advisor_panel.visible = false
+	debate_panel.visible = true
+	debate_log.clear()
+	_debate_history = [{"side": "player", "text": _initial_stance_text}]
+	_debate_turn = 0
+	_cumulative_shift = 0
+	_consecutive_zero = 0
+	_append_debate_line("player", _initial_stance_text)
+	# 触发第 1 轮：君主先回应玩家的开场
+	_debate_monarch_reply()
+
+func _append_debate_line(side: String, text: String) -> void:
+	var color: String
+	var speaker: String
+	if side == "player":
+		color = "#ffe066"
+		speaker = "纵横家"
+	else:
+		color = "#a0e0ff"
+		speaker = _country_name(country) + "王"
+	debate_log.append_text("[color=%s][%s][/color] %s\n\n" % [color, speaker, text])
+
+func _debate_monarch_reply() -> void:
+	_debate_turn += 1
+	var ai = null
+	var am = get_node_or_null("/root/AgentManager")
+	if am != null and am.ais.has(country):
+		ai = am.ais[country]
+	if ai == null or not ai.has_method("debate_reply_async"):
+		# 无 agent → 直接结算
+		_finalize_debate("no_agent")
+		return
+	debate_log.append_text("[color=#888888][i]（%s王思忖中……）[/i][/color]\n" % _country_name(country))
+	var ctx: Dictionary = {
+		"opening": _monarch_opening,
+		"proposed_action": _proposed_action,
+		"player_stance": _initial_stance,
+		"event_text": event_text,
+		"country_attrs": State.country_attrs,
+		"debate_history": _debate_history.duplicate()
+	}
+	ai.debate_reply_async(ctx, func(msg: Dictionary):
+		var text: String = String(msg.get("text", ""))
+		var shift: int = int(msg.get("stance_shift", 0))
+		if text == "":
+			text = "……"
+		_debate_history.append({"side": "monarch", "text": text, "stance_shift": shift})
+		_append_debate_line("monarch", "%s（心动 %+d）" % [text, shift])
+		_cumulative_shift += shift
+		if shift == 0:
+			_consecutive_zero += 1
+		else:
+			_consecutive_zero = 0
+		# 早停判断
+		if _consecutive_zero >= 2:
+			_finalize_debate("consecutive_zero_stall")
+			return
+		if _debate_turn >= MAX_DEBATE_TURNS:
+			_finalize_debate("max_turns")
+			return
+		# 继续 → 玩家 agent 反驳
+		_debate_player_reply()
+	)
+
+func _debate_player_reply() -> void:
+	debate_log.append_text("[color=#888888][i]（谋士拟词中……）[/i][/color]\n")
+	var ctx: Dictionary = {
+		"monarch": country,
+		"opening": _monarch_opening,
+		"proposed_action": _proposed_action,
+		"player_stance": _initial_stance,
+		"initial_stance_text": _initial_stance_text,
+		"event_text": event_text,
+		"country_attrs": State.country_attrs,
+		"debate_history": _debate_history.duplicate()
+	}
+	PlayerAgentScript.speak_async(ctx, func(msg: Dictionary):
+		var text: String = String(msg.get("text", ""))
+		if text == "":
+			text = "……"
+		_debate_history.append({"side": "player", "text": text})
+		_append_debate_line("player", text)
+		_debate_monarch_reply()
+	)
+
+func _finalize_debate(reason: String) -> void:
+	# 综合累积 shift 决定最终立场对国家三维影响力度
+	# base = 玩家开场立场；shift 累积正 = 君主被说动更甚 → 影响放大
+	var final_stance: String = _initial_stance
+	debate_log.append_text("[color=#ffd766][i]—— 辩论结束（%s，君主态度累变 %+d）——[/i][/color]\n" % [reason, _cumulative_shift])
+	# 走 v7.3.7 三分支结算
+	_apply_stance_final(final_stance)
 
 func _on_others() -> void:
 	if _submitted:
@@ -424,6 +532,18 @@ func _apply_verdict_from_arbiter(text: String, note: String) -> void:
 				stance = "推亲秦"
 				break
 	_apply_stance(stance, true, "（%s）" % note, text)
+
+func _apply_stance_final(stance: String) -> void:
+	# 从辩论历史里挑最后一句君主发言作为 response_text
+	var last_monarch_text: String = ""
+	for i in range(_debate_history.size() - 1, -1, -1):
+		var d: Dictionary = _debate_history[i]
+		if String(d.get("side", "")) == "monarch":
+			last_monarch_text = String(d.get("text", ""))
+			break
+	# 玩家原文 = 立场文本
+	var player_txt: String = _initial_stance_text
+	_apply_stance(stance, true, last_monarch_text, player_txt)
 
 func _apply_stance(stance: String, resolved: bool, response_text: String, player_text: String) -> void:
 	var arb = get_node("/root/Arbiter")

@@ -14,7 +14,7 @@ const MonarchAIScript = preload("res://scripts/core/monarch_ai.gd")
 signal agent_action(country: String, action: Dictionary)   # 单个 agent 动作（含 narrative/reason/deltas）
 signal country_finished(country: String, settle: String)    # summon / decided
 signal all_finished()
-signal chat_message(country: String, target: String, text: String)  # 聊天室发言
+signal chat_message(country: String, target: String, text: String, is_public: bool)  # 聊天室发言
 
 const COUNTRIES: Array = ["qin", "zhao", "qi"]
 
@@ -36,9 +36,10 @@ var _pending_step_count: int = 0
 
 # 聊天室（v7.3.8）
 var _chat_timer: Timer = null
-var chat_history: Array = []   # 最近 N 条聊天消息 [{country, target, text}]
+var chat_history: Array = []
 const CHAT_INTERVAL_SEC: float = 20.0
 const CHAT_HISTORY_MAX: int = 20
+const CHAT_LEAK_PROBABILITY: float = 0.3  # 私聊漏给第三方的概率
 
 func _ready() -> void:
 	ais["qin"] = MonarchAIScript.make("qin")
@@ -367,20 +368,48 @@ func _on_chat_timer() -> void:
 		"key_event_text": key_event_text,
 		"country_attrs": State.country_attrs,
 		"player_stance": player_stance,
-		"chat_history": chat_history.duplicate(),
+		"chat_history": _visible_chat_history_for(speaker),
 		"recent_actions": recent_actions.duplicate()
 	}
+	# 保底：无论回调是否触发，10s 后强制排下一条（防 LLM hang）
+	var scheduled: Array = [false]
+	var _do_next = func():
+		if scheduled[0]:
+			return
+		scheduled[0] = true
+		_schedule_next_chat()
+	# fallback timer
+	var fb = get_tree().create_timer(15.0)
+	fb.timeout.connect(func(): _do_next.call())
 	ai.chat_speak_async(ctx, func(msg: Dictionary):
 		if not active:
 			return
 		var target: String = String(msg.get("target", ""))
 		var text: String = String(msg.get("text", ""))
 		if text != "":
-			var entry: Dictionary = {"country": speaker, "target": target, "text": text}
+			# visibility：谁能看到这条消息（除玩家总能看外）
+			# 公聊 (all/空) → 全 3 国可见
+			# 私聊 (specific target) → speaker + target 必看，第三国 30% 概率"听到风声"
+			var visible_to: Array = [speaker]
+			if target == "" or target == "all":
+				for c in COUNTRIES:
+					if not (c in visible_to):
+						visible_to.append(c)
+			else:
+				if target in COUNTRIES and not (target in visible_to):
+					visible_to.append(target)
+				# 第三国听风
+				for c in COUNTRIES:
+					if not (c in visible_to) and randf() < CHAT_LEAK_PROBABILITY:
+						visible_to.append(c)
+			var is_public: bool = (target == "" or target == "all")
+			var entry: Dictionary = {
+				"country": speaker, "target": target, "text": text,
+				"visible_to": visible_to, "public": is_public
+			}
 			chat_history.append(entry)
 			if chat_history.size() > CHAT_HISTORY_MAX:
 				chat_history.pop_front()
-			# 也塞一条到 recent_actions 供 R1/R2 决策看到
 			recent_actions.append({
 				"actor": speaker, "target_country": target,
 				"action_type": "chat", "round": 0,
@@ -388,13 +417,26 @@ func _on_chat_timer() -> void:
 			})
 			if recent_actions.size() > 12:
 				recent_actions.pop_front()
-			emit_signal("chat_message", speaker, target, text)
-		_schedule_next_chat()
+			emit_signal("chat_message", speaker, target, text, is_public)
+		_do_next.call()
 	)
 
 func _schedule_next_chat() -> void:
 	if not active:
 		return
-	if _chat_timer != null and _chat_timer.time_left <= 0:
-		_chat_timer.wait_time = CHAT_INTERVAL_SEC
-		_chat_timer.start()
+	if _chat_timer == null:
+		return
+	if _chat_timer.time_left > 0:
+		return  # 已经在等
+	_chat_timer.wait_time = CHAT_INTERVAL_SEC
+	_chat_timer.start()
+
+# 返回该君主可见的历史（自己发的 + 公聊 + 目标是自己的私聊 + 第三方漏听到的）
+func _visible_chat_history_for(country: String) -> Array:
+	var out: Array = []
+	for h in chat_history:
+		var d: Dictionary = h
+		var vis: Array = d.get("visible_to", [])
+		if country in vis:
+			out.append(d)
+	return out
