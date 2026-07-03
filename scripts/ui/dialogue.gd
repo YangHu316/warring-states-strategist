@@ -20,6 +20,7 @@ var _stance_c: String = ""
 
 # v7.3.9 辩论状态 — 不限轮数，由 agent 主动 [END] 或玩家主动结束
 var _debate_round: int = 0
+const MAX_DEBATE_ROUNDS: int = 10  # 代码硬控上限（prompt 软控 5 轮）
 var _current_stance: String = ""
 var _debate_history: Array = []  # [{side, name, text}]
 var _player_agent = null
@@ -115,7 +116,13 @@ func setup(c: String, ev_text: String, m: String = "summon") -> void:
 		if fb != null:
 			bg.texture = fb
 	var am = get_node_or_null("/root/AgentManager")
-	if am != null and am.has_method("get_audience_briefing"):
+	if am != null and am.has_method("get_audience_briefing_async"):
+		briefing_label.text = "（史官正为你总结局势……）"
+		am.get_audience_briefing_async(func(text: String):
+			if is_instance_valid(briefing_label):
+				briefing_label.text = text
+		)
+	elif am != null and am.has_method("get_audience_briefing"):
 		briefing_label.text = am.get_audience_briefing()
 	else:
 		briefing_label.text = "（无博弈记录）"
@@ -352,6 +359,9 @@ func _debate_step_monarch() -> void:
 	if _debate_user_aborted:
 		_end_debate()
 		return
+	if _debate_round >= MAX_DEBATE_ROUNDS:
+		_end_debate()
+		return
 	_debate_round += 1
 	var last_player_msg: String = _last_msg_text("right")
 	var ai = _get_monarch_ai()
@@ -387,6 +397,9 @@ func _debate_step_monarch() -> void:
 # === 玩家 agent 拟稿 → 君主 agent 回应 ===
 func _debate_step_player() -> void:
 	if _debate_user_aborted:
+		_end_debate()
+		return
+	if _debate_round >= MAX_DEBATE_ROUNDS:
 		_end_debate()
 		return
 	_debate_round += 1
@@ -439,7 +452,7 @@ func _show_intercept(draft: String, ended: bool) -> void:
 	intercept_ok_btn.disabled = false
 	intercept_add_btn.disabled = false
 	intercept_panel.visible = true
-	_intercept_countdown = 3
+	_intercept_countdown = 10
 	intercept_countdown_label.text = "%d" % _intercept_countdown
 	_intercept_timer.start()
 

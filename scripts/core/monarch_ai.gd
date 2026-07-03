@@ -856,7 +856,8 @@ func _build_debate_prompt(ctx: Dictionary) -> String:
 		"要求：",
 		"- 严格按你的人物性格表态",
 		"- 回应纵横家的最新一句",
-		"- 这是第 %d 轮；若你已经做出决定 → 输出 end:true" % round_num,
+		"- 这是第 %d 轮" % round_num,
+		"- **收束原则**：正常辩论应在 3-5 轮内完成。若已第 4-5 轮 且立场明确/无新论点 → 必须输出 end:true 结束。若第 5 轮仍继续，被视为拖延。",
 		"",
 		"# 输出（严格 JSON）：",
 		'{"text": "你的文言回应（≤60字）", "end": false}'

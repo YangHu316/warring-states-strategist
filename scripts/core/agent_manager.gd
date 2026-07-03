@@ -353,6 +353,79 @@ func get_audience_briefing() -> String:
 			lines.append(s)
 	return "\n".join(lines)
 
+# v7.3.11：动态 3 句国家态度总结（异步）
+# callback(text: String) —— 三句文言，每行一句，分别对应秦/赵/齐当前态度
+func get_audience_briefing_async(callback: Callable) -> void:
+	var llm = Engine.get_main_loop().root.get_node_or_null("LLMClient")
+	if llm == null or not llm.is_ready():
+		if callback.is_valid():
+			callback.call(_mock_briefing())
+		return
+	var prompt: String = _build_briefing_prompt()
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 8.0, "temperature": 0.7, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				if callback.is_valid():
+					callback.call(_mock_briefing())
+				return
+			var qin_line: String = String((parsed as Dictionary).get("qin", ""))
+			var zhao_line: String = String((parsed as Dictionary).get("zhao", ""))
+			var qi_line: String = String((parsed as Dictionary).get("qi", ""))
+			if qin_line == "" or zhao_line == "" or qi_line == "":
+				if callback.is_valid():
+					callback.call(_mock_briefing())
+				return
+			var out: String = "秦：%s\n赵：%s\n齐：%s" % [qin_line, zhao_line, qi_line]
+			if callback.is_valid():
+				callback.call(out)
+	)
+
+func _build_briefing_prompt() -> String:
+	var country_names := {"qin": "秦", "zhao": "赵", "qi": "齐"}
+	var attrs_lines: Array = []
+	for c in ["qin", "zhao", "qi"]:
+		var a: Dictionary = State.country_attrs.get(c, {})
+		attrs_lines.append("%s：国威%d 盟信%d 战心%d" % [country_names[c], int(a.get("guowei",0)), int(a.get("mengxin",0)), int(a.get("zhanxin",0))])
+
+	var recent_lines: Array = []
+	for h in recent_actions:
+		var d: Dictionary = h
+		var actor: String = String(d.get("actor", ""))
+		var narrative: String = String(d.get("narrative", ""))
+		if actor != "" and narrative != "":
+			recent_lines.append("· [%s] %s" % [country_names.get(actor, actor), narrative])
+	if recent_lines.is_empty():
+		recent_lines.append("（本回合尚无博弈记录）")
+
+	var lines: Array = [
+		"# 世界铁律：只有秦、赵、齐三国。",
+		"",
+		"# 你是史官，正为纵横家总结当前局势",
+		"",
+		"# 各国三维",
+		"\n".join(attrs_lines),
+		"",
+		"# 关键事件",
+		String(key_event_text if key_event_text != "" else "（未知）"),
+		"",
+		"# 本回合博弈记录",
+		"\n".join(recent_lines),
+		"",
+		"# 任务",
+		"用文言为纵横家总结**每国当下的态度立场**，一国一句 ≤ 30 字。",
+		"要求：",
+		"- 每句直接说明该国当前意向（如'秦欲东出、正遣使离间'、'赵犹疑，愿联齐而畏秦'、'齐观望渔利'）",
+		"- 结合三维数值和博弈记录",
+		"- 若某国无记录，就基于三维推断",
+		"",
+		"# 输出（严格 JSON）：",
+		'{"qin": "≤30字", "zhao": "≤30字", "qi": "≤30字"}'
+	]
+	return "\n".join(lines)
+
+func _mock_briefing() -> String:
+	return "秦：东出之志不改，正探六国虚实。\n赵：犹疑难决，欲联齐又畏秦压。\n齐：观望渔利，坐待秦赵消耗。"
+
 # === 聊天室（v7.3.8） ===
 func _on_chat_timer() -> void:
 	if not active:

@@ -154,7 +154,7 @@ theme_override_styles/panel = SubResource("label_bg_dark")
 theme_override_constants/separation = 6
 
 [node name="InterceptTitle" type="Label" parent="UILayer/InterceptPanel/InterceptVBox"]
-text = "▶ 谋士正欲进言（3s 后自动送出）"
+text = "▶ 谋士正欲进言（10s 后自动送出）"
 theme_override_font_sizes/font_size = 13
 theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
 
@@ -166,7 +166,7 @@ theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.95, 0.95, 0.75, 1)
 
 [node name="InterceptCountdownLabel" type="Label" parent="UILayer/InterceptPanel/InterceptVBox"]
-text = "3"
+text = "10"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(1, 0.75, 0.15, 1)
