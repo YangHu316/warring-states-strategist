@@ -30,4 +30,11 @@ config.cfg
 
 # Local asset backups (滚动快照,不入库)
 assets/_backup_*/
+# 策划交付物下的版本备份目录（force-push 前临时备份用）
+策划交付物/*-backup/
+# 历史 htalk 草稿（不入库）
+htalk-draft-*.txt
+# 同名续作项目（独立项目,不入本仓）
+《战国纵横：末日》前奏/
+
 

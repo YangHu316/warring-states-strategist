@@ -208,10 +208,14 @@ theme_override_font_sizes/font_size = 14
 autowrap_mode = 2
 
 [node name="ChatRoomPanel" type="PanelContainer" parent="UILayer" unique_id=3311001001]
-offset_left = 10.0
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -340.0
 offset_top = 110.0
-offset_right = 340.0
-offset_bottom = 400.0
+offset_right = -10.0
+offset_bottom = 150.0
+grow_horizontal = 0
 
 [node name="VBox" type="VBoxContainer" parent="UILayer/ChatRoomPanel" unique_id=3311001002]
 layout_mode = 2
@@ -219,7 +223,7 @@ theme_override_constants/separation = 0
 
 [node name="ChatToggle" type="Button" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001003]
 layout_mode = 2
-text = "▶ 三国朝议（点击展开）"
+text = "▶ 博弈议事（点击展开）"
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("label_bg_dark")
 theme_override_styles/hover = SubResource("label_bg_dark")
@@ -233,13 +237,12 @@ horizontal_scroll_mode = 0
 vertical_scroll_mode = 2
 
 [node name="ChatLog" type="RichTextLabel" parent="UILayer/ChatRoomPanel/VBox/ChatScroll" unique_id=3311001005]
-custom_minimum_size = Vector2(320, 0)
+custom_minimum_size = Vector2(320, 220)
 layout_mode = 2
 theme_override_font_sizes/normal_font_size = 13
 bbcode_enabled = true
 scroll_following = true
 autowrap_mode = 3
-fit_content = true
 
 [node name="EventStreamPanel" type="PanelContainer" parent="UILayer" unique_id=1732380574]
 anchors_preset = 3
@@ -250,7 +253,7 @@ anchor_bottom = 1.0
 offset_left = -640.0
 offset_top = -86.0
 offset_right = -10.0
-offset_bottom = -50.0
+offset_bottom = -200.0
 grow_horizontal = 0
 grow_vertical = 0[node name="VBox" type="VBoxContainer" parent="UILayer/EventStreamPanel" unique_id=1892734101]
 layout_mode = 2
@@ -262,7 +265,7 @@ layout_mode = 2
 [node name="EventStreamToggle" type="Button" parent="UILayer/EventStreamPanel/VBox/TitleBar" unique_id=1892734103]
 size_flags_horizontal = 3
 layout_mode = 2
-text = "▼ 世界动态（点击展开）"
+text = "▼ 数值·阶段（点击展开）"
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("label_bg_dark")
 theme_override_styles/hover = SubResource("label_bg_dark")
@@ -283,6 +286,44 @@ bbcode_enabled = true
 scroll_following = true
 autowrap_mode = 0
 fit_content = true
+
+[node name="SummonNotice" type="PanelContainer" parent="UILayer" unique_id=3311001100]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -240.0
+offset_top = -110.0
+offset_right = 240.0
+offset_bottom = 110.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UILayer/SummonNotice" unique_id=3311001101]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="SummonLabel" type="Label" parent="UILayer/SummonNotice/VBox" unique_id=3311001102]
+text = "秦王欲召见你"
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("label_bg")
+
+[node name="SummonHint" type="Label" parent="UILayer/SummonNotice/VBox" unique_id=3311001103]
+text = "请前往秦完成面谈"
+horizontal_alignment = 1
+autowrap_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.85, 1)
+theme_override_font_sizes/font_size = 14
+
+[node name="ConfirmButton" type="Button" parent="UILayer/SummonNotice/VBox" unique_id=3311001104]
+custom_minimum_size = Vector2(140, 48)
+size_flags_horizontal = 4
+text = "善"
+theme_override_font_sizes/font_size = 22
 
 [node name="HandPanel" type="PanelContainer" parent="UILayer" unique_id=1439201170]
 anchors_preset = 12

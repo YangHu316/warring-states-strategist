@@ -19,6 +19,10 @@ extends Node2D
 @onready var dump_button: Button = $UILayer/ActionButtonsVBox/DumpButton
 @onready var restart_button: Button = $UILayer/ActionButtonsVBox/RestartButton
 @onready var debug_label: Label = $UILayer/DebugLabel
+@onready var summon_notice: PanelContainer = $UILayer/SummonNotice
+@onready var summon_label: Label = $UILayer/SummonNotice/VBox/SummonLabel
+@onready var summon_hint: Label = $UILayer/SummonNotice/VBox/SummonHint
+@onready var summon_confirm_btn: Button = $UILayer/SummonNotice/VBox/ConfirmButton
 @onready var turn_manager: Node = $TurnManagerNode
 @onready var player_icon: Sprite2D = $MapLayer/PlayerIcon
 @onready var status_qin: Label = $MapLayer/NodeQin/StatusQin
@@ -82,6 +86,8 @@ func _ready() -> void:
 	restart_button.pressed.connect(_on_restart_pressed)
 	event_stream_toggle.pressed.connect(_toggle_event_panel)
 	chatroom_toggle.pressed.connect(_toggle_chatroom_panel)
+	if summon_confirm_btn != null:
+		summon_confirm_btn.pressed.connect(_on_summon_notice_confirm)
 
 	# 点击地图节点 — 采用 input_event
 	area_qin.input_event.connect(func(_v, ev, _s): _on_node_click_event("qin", ev))
@@ -488,6 +494,19 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		return
 	var d = dscn.instantiate()
 	get_tree().root.add_child(d)
+	# 进入对话 → 隐藏大地图专属 UI（事件框/回合大信息/国家信息面板/三国朝议）
+	# 防止 dialogue 场景的 VBox 压在 main 的 TopBar/KeyEventBanner 上；
+	# 三国朝议在对话中已经被 ChatBox 取代，整个 panel 隐藏
+	if event_stream_panel != null:
+		event_stream_panel.visible = false
+	if chatroom_panel != null:
+		chatroom_panel.visible = false
+	if top_bar_label != null and top_bar_label.get_parent() is Control:
+		(top_bar_label.get_parent() as Control).visible = false
+	if key_event_banner != null:
+		key_event_banner.visible = false
+	if country_info_panel != null:
+		country_info_panel.visible = false
 	if d.has_method("setup"):
 		d.setup(country, _current_event_text, mode)
 	if d.has_signal("audience_settled"):
@@ -500,7 +519,18 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		d.dialogue_finished.connect(func(country2: String, _verdict: String):
 			if d != null and is_instance_valid(d):
 				d.queue_free()
+			# 恢复大地图专属 UI
+			if event_stream_panel != null:
+				event_stream_panel.visible = true
+			if chatroom_panel != null:
+				chatroom_panel.visible = true
+			if top_bar_label != null and top_bar_label.get_parent() is Control:
+				(top_bar_label.get_parent() as Control).visible = true
+			if key_event_banner != null:
+				key_event_banner.visible = true
 			_update_country_status_labels()
+			# 修复 bug: dialogue 期间追加的情报牌需要刷新到手牌 UI
+			_refresh_hand_ui()
 			_refresh_top_bar()
 			_check_death_and_react()
 			State.country_states[country2] = "done"
@@ -564,19 +594,26 @@ func _on_agent_action(country: String, action: Dictionary) -> void:
 	var narrative: String = String(action.get("narrative", ""))
 	var reason: String = String(action.get("reason", ""))
 	var deltas_note: String = String(action.get("deltas_note", ""))
-	var msg: String = "[%s R%d] %s" % [_country_name(country), int(action.get("round", 0)), narrative]
-	if reason != "":
-		msg += " —— %s" % reason
+	var round_num: int = int(action.get("round", 0))
+	# v7.3.9：话题内容（narrative + reason）→ 三国朝议栏；数值变化 → 世界动态
+	if narrative != "":
+		var tag: String = ("[R%d] " % round_num) if round_num > 0 else ""
+		var line: String = tag + narrative
+		if reason != "":
+			line += " —— %s" % reason
+		_append_chatroom(country, line)
 	if deltas_note != "":
-		msg += "  《%s》" % deltas_note
-	push_event(msg)
+		push_event("[数值] " + deltas_note)
 	_update_country_status_labels()
 
 func _on_country_finished(country: String, settle: String) -> void:
 	var name_str: String = _country_name(country)
 	var settle_disp: String = "召见" if settle == "summon" else "决策已定"
-	push_event("[%s] 博弈完成 → %s" % [name_str, settle_disp])
+	push_event("[阶段] %s → %s" % [name_str, settle_disp])
 	_update_country_status_labels()
+	# 仅当该国首次被召见（且未被处理过）时弹中央通知；后续反应轮不再弹
+	if settle == "summon" and String(State.country_states.get(country, "")) != "done":
+		_pop_summon_notice(country)
 
 func _on_all_finished() -> void:
 	next_turn_button.disabled = false
@@ -761,7 +798,7 @@ static func _country_name(c: String) -> String:
 		"qi": return "齐"
 		_: return c
 
-# === 三国朝议聊天室（v7.3.8） ===
+# === 三国朝议聊天室（v7.3.8 话题内容归集） ===
 var _chatroom_expanded: bool = false
 
 func _on_chat_message(country: String, target: String, text: String, is_public: bool = true) -> void:
@@ -780,13 +817,47 @@ func _on_chat_message(country: String, target: String, text: String, is_public: 
 		# 私聊：暗字 + 斜体
 		chatroom_log.append_text("[color=#888888][i]%s %s[/i][/color]\n" % [header, text])
 
+# v7.3.9：把 agent_action 的 narrative 推进朝议（统一入口）
+func _append_chatroom(country: String, text: String) -> void:
+	if chatroom_log == null:
+		return
+	var color_map := {"qin": "#ff9060", "zhao": "#66d0ff", "qi": "#a0ff90"}
+	var color: String = String(color_map.get(country, "#dddddd"))
+	chatroom_log.append_text("[color=%s][%s][/color] %s\n" % [color, _country_name(country), text])
+
+# === 召见通知弹窗（屏幕中央，按'善'关闭）===
+func _pop_summon_notice(country: String) -> void:
+	if summon_notice == null:
+		return
+	var name_str: String = _country_name(country)
+	summon_label.text = "%s王欲召见你" % name_str
+	if summon_hint != null:
+		summon_hint.text = "请前往 %s 完成面谈" % name_str
+	summon_notice.visible = true
+	summon_notice.z_index = 100
+
+func _on_summon_notice_confirm() -> void:
+	if summon_notice != null:
+		summon_notice.visible = false
+
+const _CHATROOM_COLLAPSED_BOTTOM: float = 150.0
+const _CHATROOM_EXPANDED_BOTTOM: float = 400.0
+
 func _toggle_chatroom_panel() -> void:
 	_chatroom_expanded = not _chatroom_expanded
 	chatroom_scroll.visible = _chatroom_expanded
 	if _chatroom_expanded:
-		chatroom_toggle.text = "▼ 三国朝议（点击收起）"
+		chatroom_toggle.text = "▼ 博弈议事（点击收起）"
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_CUBIC)
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_property(chatroom_panel, "offset_bottom", _CHATROOM_EXPANDED_BOTTOM, 0.22)
 	else:
-		chatroom_toggle.text = "▶ 三国朝议（点击展开）"
+		chatroom_toggle.text = "▶ 博弈议事（点击展开）"
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_CUBIC)
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_property(chatroom_panel, "offset_bottom", _CHATROOM_COLLAPSED_BOTTOM, 0.22)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("debug_dump"):
