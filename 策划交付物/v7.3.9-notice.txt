@@ -1,0 +1,24 @@
+【v7.3.9 已推送】主流聊天 UI + 朝议/世界动态拆分 + 不限轮数辩论
+
+commit: 5b79241 (覆盖远端 v7.3.8 13943f0)
+分支: main
+时间: 2026-07-03 11:56 (东八区)
+
+【核心改动】
+1. 辩论 UI 从论坛式 DebatePanel 改为主流聊天气泡式（君主左 / 你右，常驻状态栏显示"君主正在斟酌…(已 N 轮)"）
+2. 取消 3 轮硬上限 → 由 agent 主动 [END] 或玩家主动按"结束辩论"按钮终止
+3. ChatBox 内部分拆：ChatVBox → { ChatScroll 撑满 + StatusBar 底部 32px }
+4. 防 callback 二次触发：_end_debate 内 chat_box.visible 守门
+5. 君主 / 玩家 agent 改用文言消息 + [END] 终止协议（弃用 stance_shift 数字）
+
+【已知回退】
+- 远端 v7.3.8 的"聊天室公/私聊"（agent_manager.gd 的 is_public 升级）已丢弃
+- 备份已存到 策划交付物/v7.3.8-backup/，需要恢复可参考
+
+【维护】
+- .gitignore 新增：策划交付物/*-backup/  htalk-draft-*.txt  《战国纵横：末日》前奏/
+- v7.3.9 备份目录已加入忽略，避免误 commit
+
+【下一步】
+- 群内游戏测试：跑一局"选 A → 进入辩论 → 看 status label 是否常驻 + 君主是否回应 [END] / 玩家按结束按钮是否平滑收束"
+- 公/私聊恢复：等下一版本合并公/私聊到当前 UI
