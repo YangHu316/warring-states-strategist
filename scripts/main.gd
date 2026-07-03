@@ -61,6 +61,22 @@ const _EVENT_PANEL_EXPANDED_TOP: float = -490.0
 const _EVENT_LINE_MAX: int = 50
 const _EVENT_MAX_LINES: int = 60
 
+# === 世界播报事件分类（v7.3.10 重设计 —— 新闻栏目式分板块） ===
+# 调用 push_event(text, EventType.XXX) 指定分类；不传默认 SYSTEM
+enum EventType {
+	WORLD,    # 天下大势：关键事件 / 阶段变更 / 反应触发 / 谈判结束
+	STATE,    # 三国动向：国家三维变化
+	PLAYER,   # 你的行动：抵达 / 请见 / 打牌 / 抽牌 / MBTI 答题
+	SYSTEM,   # 系统：LLM 状态 / 调试
+}
+# 栏目配色：tag=前缀徽章文字, color=bbcode 颜色
+const _EVENT_TYPE_META: Dictionary = {
+	EventType.WORLD:  {"tag": "天下", "color": "#ffd766"},  # 金色（最显眼）
+	EventType.STATE:  {"tag": "三国", "color": "#66d0ff"},  # 青色
+	EventType.PLAYER: {"tag": "你",   "color": "#a0ff90"},  # 绿色
+	EventType.SYSTEM: {"tag": "系统", "color": "#888888"},  # 灰色（最弱化）
+}
+
 func _ready() -> void:
 	# Load Chinese font for dynamic UI
 	if ResourceLoader.exists("res://assets/fonts/NotoSansSC-Regular.ttf"):
@@ -142,7 +158,7 @@ func _on_data_loaded(success: bool) -> void:
 	if llm != null:
 		llm_status = "ready" if llm.is_ready() else "no-key"
 	debug_label.text = "Ready - Cards:%d MBTI:%d Events:%d | LLM:%s" % [State.all_cards.size(), State.all_questions.size(), State.events.size(), llm_status]
-	push_event("[系统] LLM 状态: %s" % llm_status)
+	push_event("LLM 状态: %s" % llm_status, EventType.SYSTEM)
 	if State.current_state == State.GameState.READY:
 		State.change_state(State.GameState.PLAYING)
 	call_deferred("_start_round_flow")
@@ -184,7 +200,7 @@ func _pop_mbti(qs: Array) -> void:
 	if popup.has_signal("answered"):
 		popup.answered.connect(func(qid: String, dim: String, choice: String):
 			State.record_mbti_answer(qid, dim, choice)
-			push_event("[谋士] 回答%s -> %s" % [qid, choice])
+			push_event("谋士答题 %s -> %s" % [qid, choice], EventType.PLAYER)
 			popup.queue_free()
 			call_deferred("_pop_mbti", qs)
 		)
@@ -220,7 +236,7 @@ func _resolve_key_event() -> void:
 	_current_event_tag = String(chosen.get("state_tag", "default"))
 	_current_event_text = String(chosen.get("text", ""))
 	key_event_banner.text = _current_event_text
-	push_event("[事] " + _current_event_text)
+	push_event("关键事件：" + _current_event_text, EventType.WORLD)
 
 func _draw_action_cards() -> void:
 	var pool: Array = []
@@ -236,7 +252,7 @@ func _draw_action_cards() -> void:
 	var draw_count: int = 2
 	for i in range(draw_count):
 		State.action_hand.append(pool[randi() % pool.size()])
-	push_event("[抽] 抽 %d 张（手牌共 %d）" % [draw_count, State.action_hand.size()])
+	push_event("抽 %d 张（手牌共 %d）" % [draw_count, State.action_hand.size()], EventType.PLAYER)
 
 func _refresh_hand_ui() -> void:
 	for child in action_cards_hbox.get_children():
@@ -309,7 +325,7 @@ func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audien
 					var mode2: String = "summon" if was_decided else "active"
 					_open_dialogue(audience_country, mode2)
 				else:
-					push_event("[你] 请见%s不成——名望已扣" % _country_name(audience_country))
+					push_event("请见%s不成——名望已扣" % _country_name(audience_country), EventType.PLAYER)
 		)
 
 func _resolve_card_play(c: Card, idx: int, direction: String, target: String, intel_indices: Array = []) -> bool:
@@ -334,8 +350,8 @@ func _resolve_card_play(c: Card, idx: int, direction: String, target: String, in
 			State.intel_hand.remove_at(i)
 	State.acted_this_turn = true
 	var bonus_txt: String = ("+情报×%d" % intel_indices.size()) if intel_indices.size() > 0 else ""
-	var msg: String = "[你] %s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
-	push_event(msg)
+	var msg: String = "%s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
+	push_event(msg, EventType.PLAYER)
 	if success:
 		var placeholder: String = "[情报·%s] %s%s成功" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
 		var idx_placeholder: int = State.intel_hand.size()
@@ -417,7 +433,7 @@ func _move_player_to(country: String) -> void:
 	tween.finished.connect(func():
 		State.player_location = country
 		_moving = false
-		push_event("[你] 抵达 %s" % _country_name(country))
+		push_event("抵达 %s" % _country_name(country), EventType.PLAYER)
 		_interact_country(country)
 	)
 
@@ -439,7 +455,7 @@ func _pop_active_audience_picker(country: String) -> void:
 		_open_dialogue(country, "summon")
 		return
 	if State.action_hand.is_empty():
-		push_event("[你] 手中无牌，无法请见 %s" % _country_name(country))
+		push_event("手中无牌，无法请见 %s" % _country_name(country), EventType.PLAYER)
 		return
 	var layer := CanvasLayer.new()
 	layer.layer = 12
@@ -517,7 +533,7 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		d.setup(country, _current_event_text, mode)
 	if d.has_signal("audience_settled"):
 		d.audience_settled.connect(func(country2: String, verdict: String, _player_text: String, summary: String):
-			push_event("[反应] 三国听闻%s面谈结果，各有动作……" % _country_name(country2))
+			push_event("三国听闻%s面谈结果，各有动作……" % _country_name(country2), EventType.WORLD)
 			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("trigger_reaction_round"):
 				AgentManager.trigger_reaction_round(country2, verdict, summary)
 		)
@@ -595,7 +611,7 @@ func _pop_decided_modal(country: String) -> void:
 	bch.pressed.connect(func():
 		layer.queue_free()
 		if State.action_hand.is_empty():
-			push_event("[你] 手中无牌，无法挑战 %s" % _country_name(country))
+			push_event("手中无牌，无法挑战 %s" % _country_name(country), EventType.PLAYER)
 			return
 		_pop_active_audience_picker(country)
 	)
@@ -612,13 +628,13 @@ func _on_agent_action(country: String, action: Dictionary) -> void:
 		var line: String = tag + narrative
 		_append_chatroom(country, line)
 	if deltas_note != "":
-		push_event("[数值] " + deltas_note)
+		push_event(deltas_note, EventType.STATE)
 	_update_country_status_labels()
 
 func _on_country_finished(country: String, settle: String) -> void:
 	var name_str: String = _country_name(country)
 	var settle_disp: String = "召见" if settle == "summon" else "决策已定"
-	push_event("[阶段] %s → %s" % [name_str, settle_disp])
+	push_event("%s → %s" % [name_str, settle_disp], EventType.WORLD)
 	_update_country_status_labels()
 	# 仅当该国首次被召见（且未被处理过）时弹中央通知；后续反应轮不再弹
 	if settle == "summon" and String(State.country_states.get(country, "")) != "done":
@@ -626,7 +642,7 @@ func _on_country_finished(country: String, settle: String) -> void:
 
 func _on_all_finished() -> void:
 	next_turn_button.disabled = false
-	push_event("[谈判] 三对均结，可进入下回合")
+	push_event("三对均结，可进入下回合", EventType.WORLD)
 	_update_country_status_labels()
 
 func _update_country_status_labels() -> void:
@@ -724,7 +740,7 @@ func _proceed_to_next_turn() -> void:
 
 func _on_dump_pressed() -> void:
 	print(State.dump_state())
-	push_event("[调试] 状态已打印控制台")
+	push_event("状态已打印控制台", EventType.SYSTEM)
 
 func _on_restart_pressed() -> void:
 	State.reset()
@@ -768,7 +784,10 @@ func _update_player_icon() -> void:
 	var pos: Vector2 = country_positions.get(State.player_location, Vector2(180, 360))
 	player_icon.position = pos
 
-func push_event(text: String) -> void:
+# 世界播报：追加一条事件到右下角 EventStream
+# text: 事件正文（不含 tag 前缀，函数内部按 type 自动加栏目徽章）
+# type: EventType 枚举，决定颜色和徽章；不传默认 SYSTEM
+func push_event(text: String, type: int = EventType.SYSTEM) -> void:
 	if event_stream == null:
 		return
 	var line: String = text
@@ -776,7 +795,12 @@ func push_event(text: String) -> void:
 	line = line.replace("\n", " ")
 	if line.length() > _EVENT_LINE_MAX:
 		line = line.substr(0, _EVENT_LINE_MAX - 1) + "…"
-	event_stream.append_text(line + "\n")
+	# 按栏目配色：[天下] 正文 / [三国] 正文 / [你] 正文 / [系统] 正文
+	var meta: Dictionary = _EVENT_TYPE_META.get(type, _EVENT_TYPE_META[EventType.SYSTEM])
+	var tag: String = str(meta.get("tag", "系统"))
+	var color: String = str(meta.get("color", "#888888"))
+	var formatted: String = "[color=%s][%s][/color] %s\n" % [color, tag, line]
+	event_stream.append_text(formatted)
 	# 行数过多时清空重建（避免 RichTextLabel 长期累积性能下降）
 	if event_stream.get_line_count() > _EVENT_MAX_LINES:
 		var full: String = event_stream.get_parsed_text()
@@ -792,11 +816,11 @@ func _toggle_event_panel() -> void:
 	tween.set_trans(Tween.TRANS_CUBIC)
 	tween.set_ease(Tween.EASE_OUT)
 	if _event_panel_expanded:
-		event_stream_toggle.text = "▲ 世界动态（点击收起）"
+		event_stream_toggle.text = "▲ 世界播报（点击收起）"
 		event_stream_scroll.visible = true
 		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_EXPANDED_TOP, 0.22)
 	else:
-		event_stream_toggle.text = "▼ 世界动态（点击展开）"
+		event_stream_toggle.text = "▼ 世界播报（点击展开）"
 		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_COLLAPSED_TOP, 0.22)
 		tween.tween_callback(func(): event_stream_scroll.visible = false)
 

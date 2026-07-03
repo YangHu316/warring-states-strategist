@@ -265,7 +265,7 @@ layout_mode = 2
 [node name="EventStreamToggle" type="Button" parent="UILayer/EventStreamPanel/VBox/TitleBar" unique_id=1892734103]
 size_flags_horizontal = 3
 layout_mode = 2
-text = "▼ 数值·阶段（点击展开）"
+text = "▼ 世界播报（点击展开）"
 theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("label_bg_dark")
 theme_override_styles/hover = SubResource("label_bg_dark")
