@@ -595,12 +595,11 @@ func _on_agent_action(country: String, action: Dictionary) -> void:
 	var reason: String = String(action.get("reason", ""))
 	var deltas_note: String = String(action.get("deltas_note", ""))
 	var round_num: int = int(action.get("round", 0))
-	# v7.3.9：话题内容（narrative + reason）→ 三国朝议栏；数值变化 → 世界动态
+	# v7.3.9：narrative（白话文事件记载）→ 三国朝议栏；deltas_note → 世界动态
+	# reason 是 LLM 的内心独白（常以"基于我..."开头），仅写入 recent_actions 供上送 LLM，不再显示给玩家
 	if narrative != "":
 		var tag: String = ("[R%d] " % round_num) if round_num > 0 else ""
 		var line: String = tag + narrative
-		if reason != "":
-			line += " —— %s" % reason
 		_append_chatroom(country, line)
 	if deltas_note != "":
 		push_event("[数值] " + deltas_note)
