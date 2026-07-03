@@ -60,6 +60,8 @@ func _build_prompt(ctx: Dictionary) -> String:
 	var country: String = String(ctx.get("country", ""))
 	var monarch_name: String = _monarch_name(country)
 	var stance_hint: String = String(_STANCE_DESC.get(stance, stance))
+	var player_instruction: String = String(ctx.get("player_instruction", ""))
+	var previous_draft: String = String(ctx.get("previous_draft", ""))
 
 	var hist_lines: Array = []
 	for m in ctx.get("chat_history", []):
@@ -78,19 +80,32 @@ func _build_prompt(ctx: Dictionary) -> String:
 		hist_str,
 		"",
 		"# 君主最新一句",
-		String(ctx.get("last_monarch_msg", "")),
-		"",
-		"# 你的任务",
-		"按你的立场（%s）生成一句 ≤ 60 字的**文言回应**，第一人称（\"臣\"）。" % stance,
-		"要求：",
-		"- 立场坚定，不首鼠两端",
-		"- 直接回应君主最新一句的质疑或接纳",
-		"- 用文言，符合面见君王的礼节",
-		"- 这是第 %d 轮；若你觉得已经说服君主（或君主已定）→ 输出 end:true" % round_num,
-		"",
-		"# 输出（严格 JSON）：",
-		'{"text": "你的文言回应（≤60字）", "end": false}'
+		String(ctx.get("last_monarch_msg", ""))
 	]
+
+	if player_instruction != "":
+		lines.append("")
+		lines.append("# ⚠️ 玩家（你的主人）刚给你的白话指令")
+		lines.append("「%s」" % player_instruction)
+		if previous_draft != "":
+			lines.append("")
+			lines.append("# 你上一版拟稿（玩家不满意）")
+			lines.append(previous_draft)
+		lines.append("")
+		lines.append("# 特别要求")
+		lines.append("玩家上面那句白话是**给你**的指令，不是给君主的。请**严格按玩家意图**重新拟一段文言进言。")
+
+	lines.append("")
+	lines.append("# 你的任务")
+	lines.append("按你的立场（%s）生成一句 ≤ 60 字的**文言回应**，第一人称（\"臣\"）。" % stance)
+	lines.append("要求：")
+	lines.append("- 立场坚定，不首鼠两端")
+	lines.append("- 直接回应君主最新一句的质疑或接纳")
+	lines.append("- 用文言，符合面见君王的礼节")
+	lines.append("- 这是第 %d 轮；若你觉得已经说服君主（或君主已定）→ 输出 end:true" % round_num)
+	lines.append("")
+	lines.append("# 输出（严格 JSON）：")
+	lines.append('{"text": "你的文言回应（≤60字）", "end": false}')
 	return "\n".join(lines)
 
 func _mock_respond(stance: String) -> String:

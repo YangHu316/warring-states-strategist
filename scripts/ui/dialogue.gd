@@ -34,6 +34,19 @@ var _debate_user_aborted: bool = false  # 玩家主动按"结束辩论"
 @onready var chat_box: PanelContainer = $UILayer/Root/VBox/ChatBox
 @onready var chat_log: VBoxContainer = $UILayer/Root/VBox/ChatBox/ChatVBox/ChatScroll/ChatLog
 @onready var status_label: Label = $UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar/StatusLabel
+@onready var intercept_panel: PanelContainer = $UILayer/Root/VBox/InterceptPanel
+@onready var intercept_draft_label: Label = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptDraftLabel
+@onready var intercept_countdown_label: Label = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptCountdownLabel
+@onready var intercept_ok_btn: Button = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptHBox/InterceptOkBtn
+@onready var intercept_add_btn: Button = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptHBox/InterceptAddBtn
+@onready var intercept_input_box: TextEdit = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptInputBox
+@onready var intercept_regen_btn: Button = $UILayer/Root/VBox/InterceptPanel/InterceptVBox/InterceptRegenBtn
+
+var _intercept_draft: String = ""
+var _intercept_ended: bool = false      # 玩家 agent 是否已 [END]
+var _intercept_timer: Timer = null
+var _intercept_countdown: int = 3
+var _intercept_regenerating: bool = false
 @onready var end_btn: Button = $UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar/EndDebateBtn
 @onready var preset_vbox: VBoxContainer = $UILayer/Root/VBox/PresetVBox
 @onready var preset_a_btn: Button = $UILayer/Root/VBox/PresetVBox/PresetA
@@ -69,6 +82,15 @@ func _ready() -> void:
 	preset_b_btn.disabled = true
 	preset_c_btn.disabled = true
 	others_btn.disabled = true
+	# 拦截 UI
+	intercept_ok_btn.pressed.connect(_on_intercept_ok)
+	intercept_add_btn.pressed.connect(_on_intercept_add)
+	intercept_regen_btn.pressed.connect(_on_intercept_regen)
+	_intercept_timer = Timer.new()
+	_intercept_timer.wait_time = 1.0
+	_intercept_timer.one_shot = false
+	add_child(_intercept_timer)
+	_intercept_timer.timeout.connect(_on_intercept_tick)
 
 func setup(c: String, ev_text: String, m: String = "summon") -> void:
 	country = c
@@ -368,14 +390,26 @@ func _debate_step_player() -> void:
 		_end_debate()
 		return
 	_debate_round += 1
+	_generate_and_intercept("", "")
+
+# 生成一次玩家 agent 发言（含指令 + 上一版拟稿），拟好后弹 3s 拦截
+func _generate_and_intercept(player_instruction: String, previous_draft: String) -> void:
+	if _debate_user_aborted:
+		_end_debate()
+		return
 	var last_monarch_msg: String = _last_msg_text("left")
-	_set_status("你正在斟酌…（已 %d 轮）" % _debate_round)
+	if _intercept_regenerating:
+		_set_status("谋士按你的指令重拟中……")
+	else:
+		_set_status("你正在斟酌…（已 %d 轮）" % _debate_round)
 	var ctx: Dictionary = {
 		"player_stance": _current_stance,
 		"round": _debate_round,
 		"last_monarch_msg": last_monarch_msg,
 		"chat_history": _debate_history.duplicate(),
-		"country": country
+		"country": country,
+		"player_instruction": player_instruction,
+		"previous_draft": previous_draft
 	}
 	if _player_agent == null:
 		_player_agent = PlayerAgentScript.make()
@@ -388,14 +422,78 @@ func _debate_step_player() -> void:
 		if disp == "":
 			_end_debate()
 			return
-		_add_chat_msg("right", "你", disp)
-		_debate_history.append({"side": "right", "name": "你", "text": disp})
-		if ended:
-			_end_debate()
-			return
-		# 玩家没说结束 → 君主回应
-		_debate_step_monarch()
+		# 弹拦截 UI 而不是直接送辩论
+		_show_intercept(disp, ended)
 	)
+
+# 3s 拦截窗口 —— 玩家可确认 / 补充指令 / 或超时自动送
+func _show_intercept(draft: String, ended: bool) -> void:
+	_intercept_draft = draft
+	_intercept_ended = ended
+	_intercept_regenerating = false
+	intercept_draft_label.text = draft + ("  [谋士判定：达成共识]" if ended else "")
+	intercept_input_box.text = ""
+	intercept_input_box.visible = false
+	intercept_regen_btn.visible = false
+	intercept_regen_btn.disabled = false
+	intercept_ok_btn.disabled = false
+	intercept_add_btn.disabled = false
+	intercept_panel.visible = true
+	_intercept_countdown = 3
+	intercept_countdown_label.text = "%d" % _intercept_countdown
+	_intercept_timer.start()
+
+func _on_intercept_tick() -> void:
+	_intercept_countdown -= 1
+	if _intercept_countdown <= 0:
+		_intercept_timer.stop()
+		_finalize_intercept_ok()
+		return
+	intercept_countdown_label.text = "%d" % _intercept_countdown
+
+func _on_intercept_ok() -> void:
+	if _intercept_regenerating:
+		return
+	_intercept_timer.stop()
+	_finalize_intercept_ok()
+
+func _finalize_intercept_ok() -> void:
+	# 玩家确认或倒计时到 → 送这条进言进辩论
+	intercept_panel.visible = false
+	var text: String = _intercept_draft
+	var ended: bool = _intercept_ended
+	_intercept_draft = ""
+	_add_chat_msg("right", "你", text)
+	_debate_history.append({"side": "right", "name": "你", "text": text})
+	if ended:
+		_end_debate()
+		return
+	# 玩家没结束 → 君主回应
+	_debate_step_monarch()
+
+func _on_intercept_add() -> void:
+	# 玩家点【有补充】→ 停倒计时，展开输入框
+	_intercept_timer.stop()
+	intercept_countdown_label.text = "已暂停 · 请给谋士下指令"
+	intercept_ok_btn.disabled = true
+	intercept_add_btn.disabled = true
+	intercept_input_box.visible = true
+	intercept_regen_btn.visible = true
+	intercept_input_box.grab_focus()
+
+func _on_intercept_regen() -> void:
+	if _intercept_regenerating:
+		return
+	var instruction: String = intercept_input_box.text.strip_edges()
+	if instruction == "":
+		intercept_countdown_label.text = "请先输入指令"
+		return
+	_intercept_regenerating = true
+	intercept_regen_btn.disabled = true
+	intercept_countdown_label.text = "谋士重拟中……"
+	var previous_draft: String = _intercept_draft
+	# 重生成（不+_debate_round，还是这一轮）
+	_generate_and_intercept(instruction, previous_draft)
 
 # === 玩家主动按"结束辩论"：禁用按钮 + 设标志，等当前 LLM callback 回来就终止 ===
 func _on_end_debate_pressed() -> void:
