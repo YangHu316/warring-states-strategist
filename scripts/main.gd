@@ -15,6 +15,8 @@ extends Node2D
 @onready var chatroom_log: RichTextLabel = $UILayer/ChatRoomPanel/VBox/ChatScroll/ChatLog
 @onready var action_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/ActionPanel/ActionCardsHBox
 @onready var intel_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/IntelPanel/IntelScroll/IntelCardsHBox
+@onready var hand_panel: PanelContainer = $UILayer/HandPanel
+@onready var action_buttons_vbox: VBoxContainer = $UILayer/ActionButtonsVBox
 @onready var next_turn_button: Button = $UILayer/ActionButtonsVBox/NextTurnButton
 @onready var dump_button: Button = $UILayer/ActionButtonsVBox/DumpButton
 @onready var restart_button: Button = $UILayer/ActionButtonsVBox/RestartButton
@@ -507,6 +509,10 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 		key_event_banner.visible = false
 	if country_info_panel != null:
 		country_info_panel.visible = false
+	if hand_panel != null:
+		hand_panel.visible = false
+	if action_buttons_vbox != null:
+		action_buttons_vbox.visible = false
 	if d.has_method("setup"):
 		d.setup(country, _current_event_text, mode)
 	if d.has_signal("audience_settled"):
@@ -528,6 +534,10 @@ func _open_dialogue(country: String, mode: String = "summon") -> void:
 				(top_bar_label.get_parent() as Control).visible = true
 			if key_event_banner != null:
 				key_event_banner.visible = true
+			if hand_panel != null:
+				hand_panel.visible = true
+			if action_buttons_vbox != null:
+				action_buttons_vbox.visible = true
 			_update_country_status_labels()
 			# 修复 bug: dialogue 期间追加的情报牌需要刷新到手牌 UI
 			_refresh_hand_ui()
