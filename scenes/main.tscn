@@ -6,7 +6,7 @@
 [ext_resource type="Texture2D" uid="uid://jpqcsqnbuqe5" path="res://assets/sprites/node_qin.png" id="4_nq"]
 [ext_resource type="Texture2D" uid="uid://c0hsbrejugxot" path="res://assets/sprites/node_zhao.png" id="5_nz"]
 [ext_resource type="Texture2D" uid="uid://csje45kxs6syg" path="res://assets/sprites/node_qi.png" id="6_ni"]
-[ext_resource type="Texture2D" uid="uid://c06jlpvvtx1oy" path="res://assets/sprites/player_zongheng.png" id="7_pl"]
+[ext_resource type="Texture2D" path="res://assets/sprites/player_carriage.png" id="7_pl"]
 [ext_resource type="AudioStream" uid="uid://cxt3fxgrxnxq1" path="res://assets/audio/bgm_main.wav" id="8_bgm"]
 [ext_resource type="Texture2D" uid="uid://cbaa4039983e2" path="res://assets/sprites/qin01.png" id="9_qg"]
 [ext_resource type="Texture2D" uid="uid://21ff29dfa5990" path="res://assets/sprites/zhao01.png" id="10_zg"]
@@ -157,6 +157,7 @@ theme_override_styles/normal = SubResource("label_bg")
 
 [node name="PlayerIcon" type="Sprite2D" parent="MapLayer" unique_id=1223177581]
 position = Vector2(280, 460)
+scale = Vector2(0.1626641, 0.1626641)
 texture = ExtResource("7_pl")
 
 [node name="EnvoyLayer" type="Node2D" parent="MapLayer" unique_id=378098813]
