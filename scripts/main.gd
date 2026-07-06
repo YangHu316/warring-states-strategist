@@ -84,10 +84,19 @@ enum EventType {
 }
 # 栏目配色：tag=前缀徽章文字, color=bbcode 颜色
 const _EVENT_TYPE_META: Dictionary = {
-	EventType.WORLD:  {"tag": "天下", "color": "#ffd766"},  # 金色（最显眼）
-	EventType.STATE:  {"tag": "三国", "color": "#66d0ff"},  # 青色
-	EventType.PLAYER: {"tag": "你",   "color": "#a0ff90"},  # 绿色
-	EventType.SYSTEM: {"tag": "系统", "color": "#888888"},  # 灰色（最弱化）
+	EventType.WORLD:  {"tag": "天下", "color": "#ffd766"},
+	EventType.STATE:  {"tag": "三国", "color": "#66d0ff"},
+	EventType.PLAYER: {"tag": "你",   "color": "#a0ff90"},
+	EventType.SYSTEM: {"tag": "系统", "color": "#888888"},
+}
+
+const _CARD_TEXTURES: Dictionary = {
+	"persuade": "res://assets/sprites/card_persuade.png",
+	"message":  "res://assets/sprites/card_message.png",
+	"promise":  "res://assets/sprites/card_promise.png",
+	"alienate": "res://assets/sprites/card_alienate.png",
+	"spy":      "res://assets/sprites/card_spy.png",
+	"intel":    "res://assets/sprites/card_intel_art.png",
 }
 
 func _ready() -> void:
@@ -279,24 +288,66 @@ func _refresh_hand_ui() -> void:
 		var c: Card = State.action_hand[i] as Card
 		if c == null:
 			continue
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(110, 130)
-		b.text = "%s\n%d%%" % [c.name, _preview_rate(c)]
-		b.add_theme_font_size_override("font_size", 14)
+		var tex_path: String = String(_CARD_TEXTURES.get(c.id, ""))
+		var b := TextureButton.new()
+		b.custom_minimum_size = Vector2(120, 155)
+		b.ignore_texture_size = true
+		b.stretch_mode = TextureButton.STRETCH_SCALE
+		b.modulate = Color(1.25, 1.2, 1.15, 1)
+		if tex_path != "" and ResourceLoader.exists(tex_path):
+			b.texture_normal = load(tex_path)
 		b.pressed.connect(func(): _on_action_card_pressed(i))
+		var rate_bg := StyleBoxFlat.new()
+		rate_bg.bg_color = Color(0, 0, 0, 0.55)
+		rate_bg.corner_radius_top_left = 3
+		rate_bg.corner_radius_top_right = 3
+		rate_bg.corner_radius_bottom_left = 3
+		rate_bg.corner_radius_bottom_right = 3
+		rate_bg.content_margin_left = 4.0
+		rate_bg.content_margin_right = 4.0
+		var rate_lbl := Label.new()
+		rate_lbl.text = "%d%%" % _preview_rate(c)
+		rate_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		rate_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		rate_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+		rate_lbl.add_theme_font_size_override("font_size", 14)
+		rate_lbl.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
+		rate_lbl.add_theme_stylebox_override("normal", rate_bg)
 		if _chinese_font:
-			b.add_theme_font_override("font", _chinese_font)
+			rate_lbl.add_theme_font_override("font", _chinese_font)
+		b.add_child(rate_lbl)
 		action_cards_hbox.add_child(b)
 	for i in range(State.intel_hand.size()):
 		var item: Variant = State.intel_hand[i]
 		var txt: String = String(item) if typeof(item) != TYPE_DICTIONARY else String((item as Dictionary).get("text", "情报"))
-		var b2 := Button.new()
-		b2.custom_minimum_size = Vector2(160, 60)
-		b2.text = txt
-		b2.add_theme_font_size_override("font_size", 11)
-		b2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var b2 := TextureButton.new()
+		b2.custom_minimum_size = Vector2(185, 72)
+		b2.ignore_texture_size = true
+		b2.stretch_mode = TextureButton.STRETCH_SCALE
+		b2.modulate = Color(1.25, 1.2, 1.15, 1)
+		var intel_path: String = String(_CARD_TEXTURES.get("intel", ""))
+		if intel_path != "" and ResourceLoader.exists(intel_path):
+			b2.texture_normal = load(intel_path)
+		var txt_bg := StyleBoxFlat.new()
+		txt_bg.bg_color = Color(0, 0, 0, 0.45)
+		txt_bg.corner_radius_top_left = 3
+		txt_bg.corner_radius_top_right = 3
+		txt_bg.corner_radius_bottom_left = 3
+		txt_bg.corner_radius_bottom_right = 3
+		txt_bg.content_margin_left = 4.0
+		txt_bg.content_margin_right = 4.0
+		var lbl := Label.new()
+		lbl.text = txt
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 11)
+		lbl.add_theme_color_override("font_color", Color(1, 1, 1))
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.add_theme_stylebox_override("normal", txt_bg)
 		if _chinese_font:
-			b2.add_theme_font_override("font", _chinese_font)
+			lbl.add_theme_font_override("font", _chinese_font)
+		b2.add_child(lbl)
 		intel_cards_hbox.add_child(b2)
 
 func _preview_rate(c: Card) -> int:
