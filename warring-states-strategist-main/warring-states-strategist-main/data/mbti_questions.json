@@ -1,0 +1,34 @@
+{
+  "questions": [
+    {"id": "q1", "round": 1, "text": "列国君主邀请你入幕。你会？", "options": [
+      {"text": "接受赵国——合纵若成，赵是盟主", "score": "hezong"},
+      {"text": "看谁出价更高——纵横家不站队", "score": "neutral"},
+      {"text": "接受秦国——得时则驾，不得则隐", "score": "qin"}
+    ]},
+    {"id": "q2", "round": 2, "text": "两条路：一条帮赵王打赢合纵之战；一条给秦王递消息让赵输。你会？", "options": [
+      {"text": "帮赵——合纵是抗秦正道", "score": "hezong"},
+      {"text": "都不走——我有自己的第三种方案", "score": "neutral"},
+      {"text": "给秦递消息——识时务者为俊杰", "score": "qin"}
+    ]},
+    {"id": "q3", "round": 3, "text": "平原君为合纵奔走，廉颇主张独战。二选一，你会？", "options": [
+      {"text": "选平原君——合纵才是抗秦正道", "score": "hezong"},
+      {"text": "不选——让他们自己吵", "score": "neutral"},
+      {"text": "选廉颇——独战虽险，至少赵国命运由赵人自己定", "score": "qin"}
+    ]},
+    {"id": "q4", "round": 4, "text": "六国使节齐聚邯郸签字在即，密报：齐王私下与秦通信。你会？", "options": [
+      {"text": "公开密报——让齐王没退路，护合纵", "score": "hezong"},
+      {"text": "私下警告齐王——签字帮你瞒，不签就揭发", "score": "neutral"},
+      {"text": "把密报卖给秦——趁机为秦立功", "score": "qin"}
+    ]},
+    {"id": "q5", "round": 5, "text": "合纵已签，秦军压境，赵王慌乱求你设计逃生路线。你会？", "options": [
+      {"text": "拒绝——逃跑就是投降，我要合纵成", "score": "hezong"},
+      {"text": "设计路线——保赵王命是首要，理想以后再谈", "score": "neutral"},
+      {"text": "设计路线但留陷阱——为秦除患", "score": "qin"}
+    ]},
+    {"id": "q6", "round": 6, "text": "函谷关外秦军集结，明日决战。你会？", "options": [
+      {"text": "主动请战——亲眼看到合纵胜", "score": "hezong"},
+      {"text": "留守后方——决战胜负不在我，先保命", "score": "neutral"},
+      {"text": "去秦营——趁决战前为秦献最后一份礼", "score": "qin"}
+    ]}
+  ]
+}

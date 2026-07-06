@@ -1,0 +1,80 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/mbti_popup.gd" id="1_pop"]
+
+[sub_resource type="StyleBoxFlat" id="label_bg"]
+bg_color = Color(0, 0, 0, 0.55)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 10.0
+content_margin_right = 10.0
+content_margin_top = 6.0
+content_margin_bottom = 6.0
+
+[node name="MBTIPopup" type="CanvasLayer"]
+layer = 10
+script = ExtResource("1_pop")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.55)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(700, 360)
+
+[node name="VBox" type="VBoxContainer" parent="Center/Box"]
+theme_override_constants/separation = 16
+
+[node name="TitleLabel" type="Label" parent="Center/Box/VBox"]
+text = "谋士问答"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_styles/normal = SubResource("label_bg")
+
+[node name="QuestionLabel" type="Label" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 80)
+text = "..."
+autowrap_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("label_bg")
+
+[node name="OptionA" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "A"
+theme_override_font_sizes/font_size = 16
+
+[node name="OptionB" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "B"
+theme_override_font_sizes/font_size = 16
+
+[node name="OptionC" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 50)
+text = "C 默认（不表态）"
+theme_override_font_sizes/font_size = 16
+
+[node name="TimerLabel" type="Label" parent="Center/Box/VBox"]
+text = "5"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color(1, 0.8, 0.4, 1)
+theme_override_styles/normal = SubResource("label_bg")
+
+[node name="CountdownTimer" type="Timer" parent="."]
+wait_time = 1.0

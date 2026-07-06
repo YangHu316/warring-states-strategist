@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3 uid="uid://cnbg2yijcsih5"]
+[gd_scene load_steps=13 format=3 uid="uid://cnbg2yijcsih5"]
 
 [ext_resource type="Script" uid="uid://v8xixaxuin05" path="res://scripts/core/turn_manager.gd" id="1_turnmgr"]
 [ext_resource type="Texture2D" uid="uid://b2v0avr5iehw" path="res://assets/bg/map_bg.png" id="2_bg"]
@@ -11,6 +11,9 @@
 [ext_resource type="Texture2D" uid="uid://cbaa4039983e2" path="res://assets/sprites/qin01.png" id="9_qg"]
 [ext_resource type="Texture2D" uid="uid://21ff29dfa5990" path="res://assets/sprites/zhao01.png" id="10_zg"]
 [ext_resource type="Texture2D" uid="uid://9bbebd5b6e5bb" path="res://assets/sprites/qi01.png" id="11_ig"]
+[ext_resource type="Texture2D" path="res://assets/ui/dialog_bg01.png" id="14_db"]
+[ext_resource type="Texture2D" path="res://assets/ui/chat_collapse.png" id="12_cc"]
+[ext_resource type="Texture2D" path="res://assets/ui/chat_expand.png" id="13_ce"]
 
 [sub_resource type="RectangleShape2D" id="node_rect"]
 size = Vector2(152, 152)
@@ -182,7 +185,7 @@ vertical_alignment = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_top = 68.0
-offset_bottom = 108.0
+offset_bottom = 128.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
 theme_override_font_sizes/font_size = 18
@@ -208,7 +211,7 @@ theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_font_sizes/font_size = 14
 autowrap_mode = 2
 
-[node name="ChatRoomPanel" type="PanelContainer" parent="UILayer" unique_id=3311001001]
+[node name="ChatRoomPanel" type="Control" parent="UILayer" unique_id=3311001001]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -218,28 +221,40 @@ offset_right = -10.0
 offset_bottom = 150.0
 grow_horizontal = 0
 
+[node name="BgExpand" type="TextureRect" parent="UILayer/ChatRoomPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+texture = ExtResource("13_ce")
+expand_mode = 1
+stretch_mode = 0
+visible = false
+
 [node name="VBox" type="VBoxContainer" parent="UILayer/ChatRoomPanel" unique_id=3311001002]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 layout_mode = 2
 theme_override_constants/separation = 0
 
-[node name="ChatToggle" type="Button" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001003]
+[node name="ChatToggle" type="TextureButton" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001003]
 layout_mode = 2
-text = "▶ 博弈议事（点击展开）"
-theme_override_font_sizes/font_size = 14
-theme_override_styles/normal = SubResource("label_bg_dark")
-theme_override_styles/hover = SubResource("label_bg_dark")
-theme_override_styles/pressed = SubResource("label_bg_dark")
+custom_minimum_size = Vector2(330, 44)
+texture_normal = ExtResource("12_cc")
+ignore_texture_size = true
+stretch_mode = 6
 
 [node name="ChatScroll" type="ScrollContainer" parent="UILayer/ChatRoomPanel/VBox" unique_id=3311001004]
 visible = false
 custom_minimum_size = Vector2(0, 220)
 layout_mode = 2
 horizontal_scroll_mode = 0
-vertical_scroll_mode = 2
+vertical_scroll_mode = 0
 
 [node name="ChatLog" type="RichTextLabel" parent="UILayer/ChatRoomPanel/VBox/ChatScroll" unique_id=3311001005]
-custom_minimum_size = Vector2(320, 220)
+custom_minimum_size = Vector2(250, 220)
 layout_mode = 2
+theme_override_colors/default_color = Color(0, 0, 0, 1)
 theme_override_font_sizes/normal_font_size = 13
 bbcode_enabled = true
 scroll_following = true
@@ -251,7 +266,7 @@ anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -640.0
+offset_left = -760.0
 offset_top = -86.0
 offset_right = -10.0
 offset_bottom = -200.0
@@ -277,16 +292,16 @@ visible = false
 custom_minimum_size = Vector2(0, 264)
 layout_mode = 2
 horizontal_scroll_mode = 0
-vertical_scroll_mode = 2
+vertical_scroll_mode = 3
 
 [node name="EventStream" type="RichTextLabel" parent="UILayer/EventStreamPanel/VBox/EventStreamScroll" unique_id=607928162]
-custom_minimum_size = Vector2(600, 0)
+custom_minimum_size = Vector2(750, 264)
 layout_mode = 2
 theme_override_font_sizes/normal_font_size = 13
 bbcode_enabled = true
 scroll_following = true
 autowrap_mode = 0
-fit_content = true
+fit_content = false
 
 [node name="SummonNotice" type="PanelContainer" parent="UILayer" unique_id=3311001100]
 visible = false

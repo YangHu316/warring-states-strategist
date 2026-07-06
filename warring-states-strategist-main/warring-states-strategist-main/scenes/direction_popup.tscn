@@ -1,0 +1,101 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/direction_popup.gd" id="1_dp"]
+
+[node name="DirectionPopup" type="CanvasLayer"]
+layer = 11
+script = ExtResource("1_dp")
+
+[node name="Dim" type="ColorRect" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.65)
+
+[node name="Center" type="CenterContainer" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(680, 620)
+
+[node name="VBox" type="VBoxContainer" parent="Center/Box"]
+theme_override_constants/separation = 8
+
+[node name="TitleLabel" type="Label" parent="Center/Box/VBox"]
+text = "选择打牌方向"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+
+[node name="CardInfoLabel" type="Label" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 40)
+text = "..."
+autowrap_mode = 2
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+
+[node name="TargetLabel" type="Label" parent="Center/Box/VBox"]
+text = "目标国："
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.85, 0.85, 1, 1)
+
+[node name="TargetHBox" type="HBoxContainer" parent="Center/Box/VBox"]
+
+[node name="TargetQin" type="Button" parent="Center/Box/VBox/TargetHBox"]
+custom_minimum_size = Vector2(210, 40)
+text = "秦"
+toggle_mode = true
+theme_override_font_sizes/font_size = 15
+
+[node name="TargetZhao" type="Button" parent="Center/Box/VBox/TargetHBox"]
+custom_minimum_size = Vector2(210, 40)
+text = "赵"
+toggle_mode = true
+theme_override_font_sizes/font_size = 15
+
+[node name="TargetQi" type="Button" parent="Center/Box/VBox/TargetHBox"]
+custom_minimum_size = Vector2(210, 40)
+text = "齐"
+toggle_mode = true
+theme_override_font_sizes/font_size = 15
+
+[node name="IntelLabel" type="Label" parent="Center/Box/VBox"]
+text = "组合情报牌（每张 +5%）："
+theme_override_font_sizes/font_size = 14
+theme_override_colors/font_color = Color(0.7, 0.9, 1, 1)
+
+[node name="IntelScroll" type="ScrollContainer" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 90)
+horizontal_scroll_mode = 2
+vertical_scroll_mode = 0
+
+[node name="IntelHBox" type="HBoxContainer" parent="Center/Box/VBox/IntelScroll"]
+
+[node name="RateLabel" type="Label" parent="Center/Box/VBox"]
+text = "成功率: --"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 16
+theme_override_colors/font_color = Color(0.7, 1, 0.7, 1)
+
+[node name="Dir1" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 44)
+text = "方向1"
+theme_override_font_sizes/font_size = 16
+
+[node name="Dir2" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 44)
+text = "方向2"
+theme_override_font_sizes/font_size = 16
+
+[node name="Dir3" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 44)
+text = "方向3"
+theme_override_font_sizes/font_size = 16
+
+[node name="Cancel" type="Button" parent="Center/Box/VBox"]
+custom_minimum_size = Vector2(640, 32)
+text = "取消"
+theme_override_font_sizes/font_size = 14

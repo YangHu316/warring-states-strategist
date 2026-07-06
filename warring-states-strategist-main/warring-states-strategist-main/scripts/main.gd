@@ -1,0 +1,1240 @@
+extends Node2D
+# V2 Main — 大地图主场景控制器
+
+@onready var top_bar_label: Label = $UILayer/TopBar/TopBarLabel
+@onready var key_event_banner: Label = $UILayer/KeyEventBanner
+@onready var country_info_panel: PanelContainer = $UILayer/CountryInfoPanel
+@onready var country_info_label: Label = $UILayer/CountryInfoPanel/CountryInfoLabel
+@onready var event_stream: RichTextLabel = $UILayer/EventStreamPanel/VBox/EventStreamScroll/EventStream
+@onready var event_stream_panel: PanelContainer = $UILayer/EventStreamPanel
+@onready var event_stream_toggle: Button = $UILayer/EventStreamPanel/VBox/TitleBar/EventStreamToggle
+@onready var event_stream_scroll: ScrollContainer = $UILayer/EventStreamPanel/VBox/EventStreamScroll
+@onready var chatroom_panel: PanelContainer = $UILayer/ChatRoomPanel
+@onready var chatroom_toggle: Button = $UILayer/ChatRoomPanel/VBox/ChatToggle
+@onready var chatroom_scroll: ScrollContainer = $UILayer/ChatRoomPanel/VBox/ChatScroll
+@onready var chatroom_log: RichTextLabel = $UILayer/ChatRoomPanel/VBox/ChatScroll/ChatLog
+@onready var action_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/ActionPanel/ActionCardsHBox
+@onready var intel_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/IntelPanel/IntelScroll/IntelCardsHBox
+@onready var hand_panel: PanelContainer = $UILayer/HandPanel
+@onready var action_buttons_vbox: VBoxContainer = $UILayer/ActionButtonsVBox
+@onready var next_turn_button: Button = $UILayer/ActionButtonsVBox/NextTurnButton
+@onready var dump_button: Button = $UILayer/ActionButtonsVBox/DumpButton
+@onready var restart_button: Button = $UILayer/ActionButtonsVBox/RestartButton
+@onready var debug_label: Label = $UILayer/DebugLabel
+@onready var summon_notice: PanelContainer = $UILayer/SummonNotice
+@onready var summon_label: Label = $UILayer/SummonNotice/VBox/SummonLabel
+@onready var summon_hint: Label = $UILayer/SummonNotice/VBox/SummonHint
+@onready var summon_confirm_btn: Button = $UILayer/SummonNotice/VBox/ConfirmButton
+@onready var turn_manager: Node = $TurnManagerNode
+@onready var player_icon: Sprite2D = $MapLayer/PlayerIcon
+@onready var status_qin: Label = $MapLayer/NodeQin/StatusQin
+@onready var status_zhao: Label = $MapLayer/NodeZhao/StatusZhao
+@onready var status_qi: Label = $MapLayer/NodeQi/StatusQi
+@onready var area_qin: Area2D = $MapLayer/NodeQin/AreaQin
+@onready var area_zhao: Area2D = $MapLayer/NodeZhao/AreaZhao
+@onready var area_qi: Area2D = $MapLayer/NodeQi/AreaQi
+@onready var map_layer: Node2D = $MapLayer
+
+
+# Chinese font for CJK display support
+var _chinese_font: Font
+
+# 召见标记：country -> Sprite2D（红色感叹号，城池右上角）
+# 召见触发时显示；玩家进入该国 dialogue 时隐藏
+var _summon_marks: Dictionary = {}
+# 密信标记列表：每条私谓事件在两城池中点生成一个 SecretLetterMark
+var _secret_letter_marks: Array = []
+# 本回合是否已自然生成过密信（chat_message 触发）；用于 _on_all_finished 兜底
+var _turn_secret_letter_spawned: bool = false
+# v7.3.10：玩家是否正在 dialogue 场景（用于约束地图事件只在主地图出现）
+var _in_dialogue: bool = false
+# 待弹召见通知（若召见触发时玩家正在 dialogue，延后到回主地图再弹）
+var _pending_summon_notice: String = ""
+
+var country_positions: Dictionary = {
+	"qin": Vector2(280, 460),
+	"zhao": Vector2(800, 340),
+	"qi": Vector2(1320, 460)
+}
+
+var sfx_play: AudioStream
+var sfx_success: AudioStream
+var sfx_fail: AudioStream
+var sfx_turn: AudioStream
+var sfx_death: AudioStream
+var _sfx_player: AudioStreamPlayer
+
+var _current_event_tag: String = "default"
+var _current_event_text: String = ""
+var _moving: bool = false
+var _free_phase_started: bool = false
+var _event_panel_expanded: bool = false
+const _EVENT_PANEL_COLLAPSED_TOP: float = -226.0
+const _EVENT_PANEL_EXPANDED_TOP: float = -490.0
+const _EVENT_LINE_MAX: int = 50
+const _EVENT_MAX_LINES: int = 60
+
+# === 世界播报事件分类（v7.3.10 重设计 —— 新闻栏目式分板块） ===
+# 调用 push_event(text, EventType.XXX) 指定分类；不传默认 SYSTEM
+enum EventType {
+	WORLD,    # 天下大势：关键事件 / 阶段变更 / 反应触发 / 谈判结束
+	STATE,    # 三国动向：国家三维变化
+	PLAYER,   # 你的行动：抵达 / 请见 / 打牌 / 抽牌 / MBTI 答题
+	SYSTEM,   # 系统：LLM 状态 / 调试
+}
+# 栏目配色：tag=前缀徽章文字, color=bbcode 颜色
+const _EVENT_TYPE_META: Dictionary = {
+	EventType.WORLD:  {"tag": "天下", "color": "#ffd766"},  # 金色（最显眼）
+	EventType.STATE:  {"tag": "三国", "color": "#66d0ff"},  # 青色
+	EventType.PLAYER: {"tag": "你",   "color": "#a0ff90"},  # 绿色
+	EventType.SYSTEM: {"tag": "系统", "color": "#888888"},  # 灰色（最弱化）
+}
+
+# === 卡牌美术资源（06卡牌文件夹）===
+const _CARD_ART: Dictionary = {
+	"persuade": "res://《战国纵横》美术/06卡牌/卡牌-游说.png",
+	"message": "res://《战国纵横》美术/06卡牌/卡牌-传信.png",
+	"promise": "res://《战国纵横》美术/06卡牌/卡牌-许诺.png",
+	"alienate": "res://《战国纵横》美术/06卡牌/卡牌-离间.png",
+	"spy": "res://《战国纵横》美术/06卡牌/卡牌-刺探.png",
+	"intel": "res://《战国纵横》美术/06卡牌/卡牌-情报.png",
+}
+var _card_art_cache: Dictionary = {}
+
+func _get_card_art(card_id: String) -> Texture2D:
+	if _card_art_cache.has(card_id):
+		return _card_art_cache[card_id]
+	var path: String = String(_CARD_ART.get(card_id, ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var tex: Texture2D = load(path)
+	if tex != null:
+		_card_art_cache[card_id] = tex
+	return tex
+
+# 构造一张带美术图的卡牌按钮：TextureRect 铺底 + Label 叠加文字
+func _make_card_button(tex: Texture2D, label_text: String, font_size: int, w: float, h: float) -> Button:
+	var b := Button.new()
+	b.flat = true
+	b.custom_minimum_size = Vector2(w, h)
+	b.size = Vector2(w, h)
+	if tex != null:
+		var tr := TextureRect.new()
+		tr.texture = tex
+		tr.set_anchors_preset(Control.PRESET_FULL_RECT)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(tr)
+	if label_text != "":
+		var lbl := Label.new()
+		lbl.text = label_text
+		lbl.anchor_left = 0.0
+		lbl.anchor_top = 0.60
+		lbl.anchor_right = 1.0
+		lbl.anchor_bottom = 1.0
+		lbl.offset_left = 4
+		lbl.offset_right = -4
+		lbl.offset_bottom = -6
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.add_theme_font_size_override("font_size", font_size)
+		lbl.add_theme_color_override("font_color", Color(1, 0.97, 0.85))
+		lbl.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		lbl.add_theme_constant_override("outline_size", 6)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(lbl)
+	if _chinese_font:
+		b.add_theme_font_override("font", _chinese_font)
+	return b
+
+func _ready() -> void:
+	# Load Chinese font for dynamic UI
+	if ResourceLoader.exists("res://assets/fonts/NotoSansSC-Regular.ttf"):
+		_chinese_font = load("res://assets/fonts/NotoSansSC-Regular.ttf")
+
+	_load_sfx()
+	_sfx_player = AudioStreamPlayer.new()
+	add_child(_sfx_player)
+
+	# DataLoader 信号
+	if typeof(DataLoader) == TYPE_OBJECT:
+		if DataLoader.loaded:
+			_on_data_loaded(true)
+		elif not DataLoader.is_connected("data_loaded", Callable(self, "_on_data_loaded")):
+			DataLoader.connect("data_loaded", Callable(self, "_on_data_loaded"))
+
+	if turn_manager != null:
+		if turn_manager.has_signal("turn_started"):
+			turn_manager.connect("turn_started", Callable(self, "_on_turn_started"))
+		if turn_manager.has_signal("phase_changed"):
+			turn_manager.connect("phase_changed", Callable(self, "_on_phase_changed"))
+
+	next_turn_button.pressed.connect(_on_next_turn_pressed)
+	dump_button.pressed.connect(_on_dump_pressed)
+	restart_button.pressed.connect(_on_restart_pressed)
+	event_stream_toggle.pressed.connect(_toggle_event_panel)
+	chatroom_toggle.pressed.connect(_toggle_chatroom_panel)
+	if summon_confirm_btn != null:
+		summon_confirm_btn.pressed.connect(_on_summon_notice_confirm)
+
+	# 初始化 3 个城池的召见红色感叹号标记（初始隐藏）
+	_init_summon_marks()
+
+	# 点击地图节点 — 采用 input_event
+	area_qin.input_event.connect(func(_v, ev, _s): _on_node_click_event("qin", ev))
+	area_zhao.input_event.connect(func(_v, ev, _s): _on_node_click_event("zhao", ev))
+	area_qi.input_event.connect(func(_v, ev, _s): _on_node_click_event("qi", ev))
+
+	# AgentManager 信号（V3：按国博弈）
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.agent_action.connect(_on_agent_action)
+		AgentManager.country_finished.connect(_on_country_finished)
+		AgentManager.all_finished.connect(_on_all_finished)
+		if AgentManager.has_signal("chat_message"):
+			AgentManager.chat_message.connect(_on_chat_message)
+
+	# State 信号
+	if typeof(State) == TYPE_OBJECT:
+		State.player_attrs_changed.connect(_on_player_attrs_changed)
+		State.country_attrs_changed.connect(_on_country_attrs_changed)
+
+	_refresh_top_bar()
+	_update_player_icon()
+
+func _load_sfx() -> void:
+	sfx_play = load("res://assets/audio/sfx_card_play.wav")
+	sfx_success = load("res://assets/audio/sfx_success.wav")
+	sfx_fail = load("res://assets/audio/sfx_fail.wav")
+	sfx_turn = load("res://assets/audio/sfx_turn.wav")
+	sfx_death = load("res://assets/audio/sfx_death.wav")
+
+func play_sfx(name_str: String) -> void:
+	if _sfx_player == null:
+		return
+	var s: AudioStream = null
+	match name_str:
+		"play": s = sfx_play
+		"success": s = sfx_success
+		"fail": s = sfx_fail
+		"turn": s = sfx_turn
+		"death": s = sfx_death
+	if s != null:
+		_sfx_player.stream = s
+		_sfx_player.play()
+
+func _on_data_loaded(success: bool) -> void:
+	if not success:
+		debug_label.text = "ERROR: data load failed"
+		return
+	var llm = get_node_or_null("/root/LLMClient")
+	var llm_status: String = "off"
+	if llm != null:
+		llm_status = "ready" if llm.is_ready() else "no-key"
+	debug_label.text = "Ready - Cards:%d MBTI:%d Events:%d | LLM:%s" % [State.all_cards.size(), State.all_questions.size(), State.events.size(), llm_status]
+	push_event("LLM 状态: %s" % llm_status, EventType.SYSTEM)
+	if State.current_state == State.GameState.READY:
+		State.change_state(State.GameState.PLAYING)
+	call_deferred("_start_round_flow")
+
+func _start_round_flow() -> void:
+	_free_phase_started = false
+	_show_mbti_questions_for_round()
+
+func _show_mbti_questions_for_round() -> void:
+	var qs: Array = []
+	for q in State.all_questions:
+		if typeof(q) == TYPE_DICTIONARY and int(q.get("round", -1)) == State.current_round:
+			var qid: String = String(q.get("id", ""))
+			var already: bool = false
+			for ans in State.mbti_answers:
+				if String(ans.get("qid", "")) == qid:
+					already = true
+					break
+			if not already:
+				qs.append(q)
+	if qs.is_empty():
+		_after_mbti_phase()
+		return
+	_pop_mbti(qs)
+
+func _pop_mbti(qs: Array) -> void:
+	if qs.is_empty():
+		_after_mbti_phase()
+		return
+	var q: Dictionary = qs.pop_front()
+	var popup_scene := load("res://scenes/mbti_popup.tscn")
+	if popup_scene == null:
+		_after_mbti_phase()
+		return
+	var popup = popup_scene.instantiate()
+	add_child(popup)
+	if popup.has_method("setup"):
+		popup.setup(q)
+	if popup.has_signal("answered"):
+		popup.answered.connect(func(qid: String, dim: String, choice: String):
+			State.record_mbti_answer(qid, dim, choice)
+			push_event("谋士答题 %s -> %s" % [qid, choice], EventType.PLAYER)
+			popup.queue_free()
+			call_deferred("_pop_mbti", qs)
+		)
+
+func _after_mbti_phase() -> void:
+	if _free_phase_started:
+		return
+	_free_phase_started = true
+	_resolve_key_event()
+	_draw_action_cards()
+	_refresh_hand_ui()
+	_refresh_top_bar()
+	if turn_manager != null:
+		turn_manager.start_free_phase()
+	next_turn_button.disabled = true
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.start_free_phase(_current_event_tag, _current_event_text)
+
+func _resolve_key_event() -> void:
+	var rn: int = State.current_round
+	var candidates: Array = []
+	for e in State.events:
+		if typeof(e) != TYPE_DICTIONARY:
+			continue
+		var rng: Array = e.get("round_range", [1, 6])
+		if rng.size() < 2:
+			continue
+		if rn >= int(rng[0]) and rn <= int(rng[1]):
+			candidates.append(e)
+	var chosen: Dictionary = {}
+	if candidates.size() > 0:
+		chosen = candidates[randi() % candidates.size()]
+	_current_event_tag = String(chosen.get("state_tag", "default"))
+	_current_event_text = String(chosen.get("text", ""))
+	key_event_banner.text = _current_event_text
+	push_event("关键事件：" + _current_event_text, EventType.WORLD)
+
+func _draw_action_cards() -> void:
+	var pool: Array = []
+	for c in State.all_cards:
+		if c == null:
+			continue
+		var cid: String = String(c.id)
+		if cid == "intel" or cid == "audience":
+			continue
+		pool.append(c)
+	if pool.is_empty():
+		return
+	var draw_count: int = 2
+	for i in range(draw_count):
+		State.action_hand.append(pool[randi() % pool.size()])
+	push_event("抽 %d 张（手牌共 %d）" % [draw_count, State.action_hand.size()], EventType.PLAYER)
+
+func _refresh_hand_ui() -> void:
+	for child in action_cards_hbox.get_children():
+		child.queue_free()
+	for child in intel_cards_hbox.get_children():
+		child.queue_free()
+	for i in range(State.action_hand.size()):
+		var c: Card = State.action_hand[i] as Card
+		if c == null:
+			continue
+		var tex: Texture2D = _get_card_art(c.id)
+		var b := _make_card_button(tex, "%s\n%d%%" % [c.name, _preview_rate(c)], 13, 110.0, 154.0)
+		b.pressed.connect(func(): _on_action_card_pressed(i))
+		action_cards_hbox.add_child(b)
+	for i in range(State.intel_hand.size()):
+		var item: Variant = State.intel_hand[i]
+		var txt: String = String(item) if typeof(item) != TYPE_DICTIONARY else String((item as Dictionary).get("text", "情报"))
+		var tex2: Texture2D = _get_card_art("intel")
+		var b2 := _make_card_button(tex2, txt, 11, 120.0, 154.0)
+		intel_cards_hbox.add_child(b2)
+
+func _preview_rate(c: Card) -> int:
+	if c == null:
+		return 0
+	var attr_val: int = int(State.player_attrs.get(c.scale_attr, 0))
+	var rate: int = int(round(float(c.base_rate) + float(attr_val) * float(c.scale_coef)))
+	return clampi(rate, 5, 95)
+
+func _on_action_card_pressed(idx: int) -> void:
+	if idx < 0 or idx >= State.action_hand.size():
+		return
+	var c: Card = State.action_hand[idx] as Card
+	if c == null:
+		return
+	_pop_card_modal(c, idx, State.player_location, false, "")
+
+# unified: 打牌确认 modal（选目标 + 情报组合 + 方向）
+# is_active_audience: 若为 true，成功后打开面谈自输模式；失败仅名望-3
+func _pop_card_modal(c: Card, idx: int, default_target: String, is_active_audience: bool, audience_country: String) -> void:
+	var pscn := load("res://scenes/direction_popup.tscn")
+	if pscn == null:
+		_resolve_card_play(c, idx, "", default_target)
+		return
+	var pop = pscn.instantiate()
+	add_child(pop)
+	if pop.has_method("setup"):
+		pop.setup(c, default_target)
+	if pop.has_signal("card_played"):
+		pop.card_played.connect(func(dir: String, target: String, intel_indices: Array):
+			pop.queue_free()
+			if target == "":
+				return
+			var success: bool = _resolve_card_play(c, idx, dir, target, intel_indices)
+			if is_active_audience:
+				if success:
+					var was_decided: bool = false
+					if typeof(AgentManager) == TYPE_OBJECT:
+						was_decided = AgentManager.is_country_decided(audience_country)
+						if was_decided and AgentManager.has_method("challenge_decided"):
+							AgentManager.challenge_decided(audience_country)
+					var mode2: String = "summon" if was_decided else "active"
+					_open_dialogue(audience_country, mode2)
+				else:
+					push_event("请见%s不成——名望已扣" % _country_name(audience_country), EventType.PLAYER)
+		)
+
+func _resolve_card_play(c: Card, idx: int, direction: String, target: String, intel_indices: Array = []) -> bool:
+	var arb = get_node("/root/Arbiter")
+	var intel_bonus: int = intel_indices.size() * State.INTEL_BONUS_PER_CARD
+	var res: Dictionary = arb.roll_card(c.id, direction, target, intel_bonus)
+	var success: bool = bool(res.get("success", false))
+	var dp: Dictionary = res.get("deltas_player", {})
+	if dp != null and not dp.is_empty():
+		State.apply_player_delta(dp)
+	var dc: Dictionary = res.get("deltas_country", {})
+	if dc != null and not dc.is_empty():
+		State.apply_country_delta(target, dc)
+	if idx >= 0 and idx < State.action_hand.size():
+		State.action_hand.remove_at(idx)
+	# 消耗组合的情报牌（从大到小索引删）
+	var sorted_intel = intel_indices.duplicate()
+	sorted_intel.sort()
+	sorted_intel.reverse()
+	for i in sorted_intel:
+		if i >= 0 and i < State.intel_hand.size():
+			State.intel_hand.remove_at(i)
+	State.acted_this_turn = true
+	var bonus_txt: String = ("+情报×%d" % intel_indices.size()) if intel_indices.size() > 0 else ""
+	var msg: String = "%s%s%s·%s -> %s (%d%%)" % [c.name, ("·" + direction if direction != "" else ""), bonus_txt, target, ("成功" if success else "失败"), int(res.get("rate", 0))]
+	push_event(msg, EventType.PLAYER)
+	if success:
+		var placeholder: String = "[情报·%s] %s%s成功" % [_country_name(target), c.name, ("·" + direction if direction != "" else "")]
+		var idx_placeholder: int = State.intel_hand.size()
+		State.intel_hand.append(placeholder)
+		_request_intel_narration(idx_placeholder, c, direction, target)
+	_refresh_hand_ui()
+	_refresh_top_bar()
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.on_player_card_played(target, c.id, direction, success)
+	_check_death_and_react()
+	return success
+
+func _request_intel_narration(intel_idx: int, c: Card, direction: String, target: String) -> void:
+	var llm = get_node_or_null("/root/LLMClient")
+	if llm == null or not llm.is_ready():
+		return
+	var attrs: Dictionary = State.country_attrs.get(target, {})
+	var monarch_names = {"qin": "秦王", "zhao": "赵王", "qi": "齐王"}
+	var dir_labels = {
+		"push_hezong": "推合纵", "push_qin": "推亲秦", "neutral": "中立",
+		"favor_hezong": "利合纵", "favor_lianheng": "利连横",
+		"aid": "承诺援助", "ally": "承诺结盟"
+	}
+	var dir_disp: String = String(dir_labels.get(direction, direction))
+	var lines: Array = [
+		"# 世界铁律：这个世界只有三个国家，秦、赵、齐。不存在韩魏楚燕等其他国家。你的叙事只能提及秦赵齐。",
+		"# 你是战国时期的一位史官，负责记录纵横家的行动。",
+		"# 事件",
+		"纵横家对%s打出了「%s%s」并成功。" % [_country_name(target), c.name, ("·" + dir_disp if dir_disp != "" else "")],
+		"",
+		"# %s当前状态" % monarch_names.get(target, "君主"),
+		"国威%d 盟信%d 战心%d" % [int(attrs.get("guowei",0)), int(attrs.get("mengxin",0)), int(attrs.get("zhanxin",0))],
+		"",
+		"# 关键事件",
+		_current_event_text,
+		"",
+		"# 输出（严格 JSON，无多余文字）：",
+		"{",
+		'  "intel": "≤50 字情报文本，一句话概括这次行动引发的连锁反应或君主的私下反应。用第三人称叙事口吻。"',
+		"}"
+	]
+	var prompt = "\n".join(lines)
+	llm.request(prompt, {"model": "deepseek-v4-flash", "timeout_sec": 5.0, "temperature": 0.9, "response_json": true},
+		func(parsed: Variant, err: String):
+			if parsed == null or typeof(parsed) != TYPE_DICTIONARY:
+				return
+			var narrative: String = String((parsed as Dictionary).get("intel", ""))
+			if narrative == "":
+				return
+			if intel_idx < 0 or intel_idx >= State.intel_hand.size():
+				return
+			State.intel_hand[intel_idx] = "[情报·%s] %s" % [_country_name(target), narrative]
+			_refresh_hand_ui()
+	)
+
+func _check_death_and_react() -> void:
+	var dk: String = State.check_death()
+	if dk != "":
+		play_sfx("death")
+		call_deferred("_go_ending", "death", dk)
+
+func _on_node_click_event(country: String, ev: InputEvent) -> void:
+	if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+		_on_node_clicked(country)
+
+func _on_node_clicked(country: String) -> void:
+	if _moving:
+		return
+	if State.player_location == country:
+		_interact_country(country)
+		return
+	_move_player_to(country)
+
+func _move_player_to(country: String) -> void:
+	_moving = true
+	var pos: Vector2 = country_positions.get(country, player_icon.position)
+	var tween := create_tween()
+	tween.tween_property(player_icon, "position", pos, 1.5)
+	tween.finished.connect(func():
+		State.player_location = country
+		_moving = false
+		push_event("抵达 %s" % _country_name(country), EventType.PLAYER)
+		_interact_country(country)
+	)
+
+func _interact_country(country: String) -> void:
+	var status: String = ""
+	if typeof(AgentManager) == TYPE_OBJECT:
+		status = AgentManager.get_country_status(country)
+	if status == "召见":
+		_open_dialogue(country, "summon")
+	elif status == "决策已定":
+		_pop_decided_modal(country)
+	else:
+		# 空闲 / 谈判中 → 主动请见：先选牌打
+		_pop_active_audience_picker(country)
+
+func _pop_active_audience_picker(country: String) -> void:
+	# 防御：picker 打开前若已被召见，直接开面谈跳过打牌
+	if typeof(AgentManager) == TYPE_OBJECT and AgentManager.is_country_summon(country):
+		_open_dialogue(country, "summon")
+		return
+	if State.action_hand.is_empty():
+		push_event("手中无牌，无法请见 %s" % _country_name(country), EventType.PLAYER)
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 12
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cc)
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(560, 380)
+	cc.add_child(box)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 10)
+	box.add_child(vb)
+	var t := Label.new()
+	t.text = "选一张行动牌请见 %s" % _country_name(country)
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.add_theme_font_size_override("font_size", 18)
+	t.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	vb.add_child(t)
+	var hint := Label.new()
+	hint.text = "牌打成功 → 见到君主，只能自输入；失败 → 名望 -3，见不到"
+	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hint.add_theme_font_size_override("font_size", 12)
+	hint.add_theme_color_override("font_color", Color(0.85, 0.85, 0.85))
+	vb.add_child(hint)
+	for i in range(State.action_hand.size()):
+		var c: Card = State.action_hand[i] as Card
+		if c == null:
+			continue
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(500, 56)
+		b.text = "%s（%d%%）" % [c.name, _preview_rate(c)]
+		b.add_theme_font_size_override("font_size", 15)
+		var art: Texture2D = _get_card_art(c.id)
+		if art != null:
+			b.icon = art
+			b.expand_icon = false
+			b.add_theme_constant_override("icon_max_width", 42)
+		if _chinese_font:
+			b.add_theme_font_override("font", _chinese_font)
+		var captured_i: int = i
+		var captured_c: Card = c
+		b.pressed.connect(func():
+			layer.queue_free()
+			_pop_card_modal(captured_c, captured_i, country, true, country)
+		)
+		vb.add_child(b)
+	var cancel := Button.new()
+	cancel.text = "取消"
+	cancel.add_theme_font_size_override("font_size", 13)
+	cancel.pressed.connect(func(): layer.queue_free())
+	vb.add_child(cancel)
+
+func _open_dialogue(country: String, mode: String = "summon") -> void:
+	var dscn := load("res://scenes/dialogue.tscn")
+	if dscn == null:
+		return
+	var d = dscn.instantiate()
+	get_tree().root.add_child(d)
+	# v7.3.10：进入 dialogue 场景 —— 标记位 + 隐藏所有大地图专属 UI/标记
+	_in_dialogue = true
+	# 进入对话 → 隐藏大地图专属 UI（事件框/回合大信息/国家信息面板/三国朝议）
+	# 防止 dialogue 场景的 VBox 压在 main 的 TopBar/KeyEventBanner 上；
+	# 三国朝议在对话中已经被 ChatBox 取代，整个 panel 隐藏
+	if event_stream_panel != null:
+		event_stream_panel.visible = false
+	if chatroom_panel != null:
+		chatroom_panel.visible = false
+	if top_bar_label != null and top_bar_label.get_parent() is Control:
+		(top_bar_label.get_parent() as Control).visible = false
+	if key_event_banner != null:
+		key_event_banner.visible = false
+	if country_info_panel != null:
+		country_info_panel.visible = false
+	if hand_panel != null:
+		hand_panel.visible = false
+	if action_buttons_vbox != null:
+		action_buttons_vbox.visible = false
+	# v7.3.10：玩家进入该国对话 → 隐藏所有召见标记（红感叹号不可在其他界面出现）
+	_hide_all_summon_marks()
+	# v7.3.10：dialogue 期间隐藏所有密信图标 + 召见通知（防遮挡 / 不可在其他界面出现）
+	_set_secret_letters_visible(false)
+	if summon_notice != null:
+		summon_notice.visible = false
+	if d.has_method("setup"):
+		d.setup(country, _current_event_text, mode)
+	if d.has_signal("audience_settled"):
+		d.audience_settled.connect(func(country2: String, verdict: String, _player_text: String, summary: String):
+			push_event("三国听闻%s面谈结果，各有动作……" % _country_name(country2), EventType.WORLD)
+			if typeof(AgentManager) == TYPE_OBJECT and AgentManager.has_method("trigger_reaction_round"):
+				AgentManager.trigger_reaction_round(country2, verdict, summary)
+		)
+	if d.has_signal("dialogue_finished"):
+		d.dialogue_finished.connect(func(country2: String, _verdict: String):
+			if d != null and is_instance_valid(d):
+				d.queue_free()
+			# v7.3.10：离开 dialogue 场景 —— 清标记位 + 恢复所有大地图专属 UI/标记
+			_in_dialogue = false
+			# 恢复大地图专属 UI
+			if event_stream_panel != null:
+				event_stream_panel.visible = true
+			if chatroom_panel != null:
+				chatroom_panel.visible = true
+			if top_bar_label != null and top_bar_label.get_parent() is Control:
+				(top_bar_label.get_parent() as Control).visible = true
+			if key_event_banner != null:
+				key_event_banner.visible = true
+			if hand_panel != null:
+				hand_panel.visible = true
+			if action_buttons_vbox != null:
+				action_buttons_vbox.visible = true
+			_update_country_status_labels()
+			# 修复 bug: dialogue 期间追加的情报牌需要刷新到手牌 UI
+			_refresh_hand_ui()
+			_refresh_top_bar()
+			_check_death_and_react()
+			State.country_states[country2] = "done"
+			# v7.3.10：回主地图 → 恢复密信图标 + 智能恢复召见标记（只对仍 summon 的亮）
+			_set_secret_letters_visible(true)
+			_refresh_all_summon_marks()
+			# v7.3.10：若有延后的召见通知，现在弹出
+			if _pending_summon_notice != "":
+				var pending: String = _pending_summon_notice
+				_pending_summon_notice = ""
+				_pop_summon_notice(pending)
+		)
+
+func _pop_decided_modal(country: String) -> void:
+	# 简化 modal。为避免多场景文件。状态按钮动态生成。
+	var layer := CanvasLayer.new()
+	layer.layer = 9
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cc)
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(480, 240)
+	cc.add_child(box)
+	var vb := VBoxContainer.new()
+	vb.add_theme_constant_override("separation", 12)
+	box.add_child(vb)
+	var t := Label.new()
+	t.text = "%s已决策" % _country_name(country)
+	t.add_theme_font_size_override("font_size", 20)
+	t.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	if _chinese_font:
+		t.add_theme_font_override("font", _chinese_font)
+	if _chinese_font:
+		t.add_theme_font_override("font", _chinese_font)
+	vb.add_child(t)
+	var d := Label.new()
+	d.text = "%s君闭门不听。可打牌挑战以重启召见。" % _country_name(country)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.add_theme_font_size_override("font_size", 14)
+	if _chinese_font:
+		d.add_theme_font_override("font", _chinese_font)
+	vb.add_child(d)
+	var bch := Button.new()
+	bch.text = "打牌挑战"
+	if _chinese_font:
+		bch.add_theme_font_override("font", _chinese_font)
+	vb.add_child(bch)
+	var bcl := Button.new()
+	bcl.text = "离开"
+	if _chinese_font:
+		bcl.add_theme_font_override("font", _chinese_font)
+	vb.add_child(bcl)
+	bcl.pressed.connect(func(): layer.queue_free())
+	bch.pressed.connect(func():
+		layer.queue_free()
+		if State.action_hand.is_empty():
+			push_event("手中无牌，无法挑战 %s" % _country_name(country), EventType.PLAYER)
+			return
+		_pop_active_audience_picker(country)
+	)
+
+func _on_agent_action(country: String, action: Dictionary) -> void:
+	var narrative: String = String(action.get("narrative", ""))
+	var reason: String = String(action.get("reason", ""))
+	var deltas_note: String = String(action.get("deltas_note", ""))
+	var round_num: int = int(action.get("round", 0))
+	# v7.3.9：narrative（白话文事件记载）→ 三国朝议栏；deltas_note → 世界动态
+	# reason 是 LLM 的内心独白（常以"基于我..."开头），仅写入 recent_actions 供上送 LLM，不再显示给玩家
+	if narrative != "":
+		var tag: String = ("[R%d] " % round_num) if round_num > 0 else ""
+		var line: String = tag + narrative
+		_append_chatroom(country, line)
+	if deltas_note != "":
+		push_event(deltas_note, EventType.STATE)
+	_update_country_status_labels()
+
+func _on_country_finished(country: String, settle: String) -> void:
+	var name_str: String = _country_name(country)
+	var settle_disp: String = "召见" if settle == "summon" else "决策已定"
+	push_event("%s → %s" % [name_str, settle_disp], EventType.WORLD)
+	_update_country_status_labels()
+	# 仅当该国首次被召见（且未被处理过）时弹中央通知；后续反应轮不再弹
+	if settle == "summon" and String(State.country_states.get(country, "")) != "done":
+		# v7.3.10：若玩家正在 dialogue 场景，延后弹召见通知到回主地图时
+		if _in_dialogue:
+			_pending_summon_notice = country
+		else:
+			_pop_summon_notice(country)
+		# 城池图标右上角亮红色感叹号（v7.3.10：地图可点击事件）
+		_show_summon_mark(country)
+
+func _on_all_finished() -> void:
+	next_turn_button.disabled = false
+	push_event("三对均结，可进入下回合", EventType.WORLD)
+	_update_country_status_labels()
+	# v7.3.10：兜底 —— 若本回合无自然 chat_message 触发密信，生成一封"密语风闻"
+	_spawn_fallback_secret_letter()
+
+func _update_country_status_labels() -> void:
+	if typeof(AgentManager) != TYPE_OBJECT:
+		return
+	status_qin.text = _fmt_country_status("qin")
+	status_zhao.text = _fmt_country_status("zhao")
+	status_qi.text = _fmt_country_status("qi")
+
+func _fmt_country_status(country: String) -> String:
+	var st: String = AgentManager.get_country_status(country)
+	var attrs: Dictionary = State.country_attrs.get(country, {})
+	var line1: String = "%s [%s]" % [_country_name(country), st]
+	var line2: String = "威%d 盟%d 战%d" % [
+		int(attrs.get("guowei", 0)),
+		int(attrs.get("mengxin", 0)),
+		int(attrs.get("zhanxin", 0))
+	]
+	return "%s\n%s" % [line1, line2]
+
+func _on_next_turn_pressed() -> void:
+	# 二次确认：是否有 summon 未处理
+	var unhandled: Array = []
+	for c in ["qin", "zhao", "qi"]:
+		if AgentManager.is_country_summon(c) and String(State.country_states.get(c, "")) != "done":
+			unhandled.append(c)
+	if unhandled.size() > 0:
+		_pop_confirm_skip(unhandled)
+		return
+	_proceed_to_next_turn()
+
+func _pop_confirm_skip(unhandled: Array) -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 9
+	add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(cc)
+	var box := PanelContainer.new()
+	box.custom_minimum_size = Vector2(420, 220)
+	cc.add_child(box)
+	var vb := VBoxContainer.new()
+	box.add_child(vb)
+	var t := Label.new()
+	var names: Array = []
+	for c in unhandled:
+		names.append(_country_name(c))
+	t.text = "还有 %s 召见未处理，是否进入下回合？" % "、".join(names)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.add_theme_font_size_override("font_size", 14)
+	if _chinese_font:
+		t.add_theme_font_override("font", _chinese_font)
+	if _chinese_font:
+		t.add_theme_font_override("font", _chinese_font)
+	vb.add_child(t)
+	var bok := Button.new()
+	bok.text = "确认进入"
+	if _chinese_font:
+		bok.add_theme_font_override("font", _chinese_font)
+	vb.add_child(bok)
+	var bc := Button.new()
+	bc.text = "取消"
+	if _chinese_font:
+		bc.add_theme_font_override("font", _chinese_font)
+	vb.add_child(bc)
+	bc.pressed.connect(func(): layer.queue_free())
+	bok.pressed.connect(func():
+		layer.queue_free()
+		_proceed_to_next_turn()
+	)
+
+func _proceed_to_next_turn() -> void:
+	play_sfx("turn")
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.reset()
+	State.country_states = {"qin": "idle", "zhao": "idle", "qi": "idle"}
+	if State.current_round >= State.max_round:
+		var arb = get_node("/root/Arbiter")
+		var res: Dictionary = arb.check_ending()
+		call_deferred("_go_ending", String(res.get("type", "situation")), String(res.get("detail", "undecided")))
+		return
+	turn_manager.advance_turn()
+	var dk: String = State.check_death()
+	if dk != "":
+		play_sfx("death")
+		call_deferred("_go_ending", "death", dk)
+		return
+	_refresh_top_bar()
+	_update_country_status_labels()
+	call_deferred("_start_round_flow")
+
+func _on_dump_pressed() -> void:
+	print(State.dump_state())
+	push_event("状态已打印控制台", EventType.SYSTEM)
+
+func _on_restart_pressed() -> void:
+	State.reset()
+	State.mbti_answers.clear()
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.reset()
+	get_tree().reload_current_scene()
+
+func _go_ending(kind: String, detail: String) -> void:
+	if typeof(AgentManager) == TYPE_OBJECT:
+		AgentManager.reset()
+	var arb = get_node("/root/Arbiter")
+	var ending_data: Dictionary = {"kind": kind, "detail": detail, "stance": arb.judge_stance()}
+	var f := FileAccess.open("user://ending.dat", FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(ending_data))
+		f.close()
+	get_tree().change_scene_to_file("res://scenes/ending.tscn")
+
+func _on_turn_started(round_num: int) -> void:
+	_refresh_top_bar()
+	# v7.3.10：每轮开始时清理上一轮的密信图标（避免地图堆积过多）
+	_clear_secret_letters()
+	# v7.3.10：保证本回合至少有一封密信事件 —— 若第一轮无 chat_message 触发,
+	# 在回合结束时由 _on_all_finished 兜底生成一封"密语风闻"
+	_turn_secret_letter_spawned = false
+
+func _on_phase_changed(p: String) -> void:
+	print("[Phase] %s round=%d" % [p, State.current_round])
+
+func _on_player_attrs_changed(_attrs: Dictionary) -> void:
+	_refresh_top_bar()
+
+func _on_country_attrs_changed(_country: String, _attrs: Dictionary) -> void:
+	_update_country_status_labels()
+
+func _refresh_top_bar() -> void:
+	top_bar_label.text = "回合 %d/%d   合纵 %d   名望 %d   心计 %d" % [
+		State.current_round, State.max_round,
+		int(State.player_attrs.get("hezong", 0)),
+		int(State.player_attrs.get("mingwang", 0)),
+		int(State.player_attrs.get("xinji", 0))
+	]
+
+func _update_player_icon() -> void:
+	var pos: Vector2 = country_positions.get(State.player_location, Vector2(180, 360))
+	player_icon.position = pos
+
+# 世界播报：追加一条事件到右下角 EventStream
+# text: 事件正文（不含 tag 前缀，函数内部按 type 自动加栏目徽章）
+# type: EventType 枚举，决定颜色和徽章；不传默认 SYSTEM
+func push_event(text: String, type: int = EventType.SYSTEM) -> void:
+	if event_stream == null:
+		return
+	var line: String = text
+	# 去掉嵌入换行，强制单行
+	line = line.replace("\n", " ")
+	if line.length() > _EVENT_LINE_MAX:
+		line = line.substr(0, _EVENT_LINE_MAX - 1) + "…"
+	# 按栏目配色：[天下] 正文 / [三国] 正文 / [你] 正文 / [系统] 正文
+	var meta: Dictionary = _EVENT_TYPE_META.get(type, _EVENT_TYPE_META[EventType.SYSTEM])
+	var tag: String = str(meta.get("tag", "系统"))
+	var color: String = str(meta.get("color", "#888888"))
+	var formatted: String = "[color=%s][%s][/color] %s\n" % [color, tag, line]
+	event_stream.append_text(formatted)
+	# 行数过多时清空重建（避免 RichTextLabel 长期累积性能下降）
+	if event_stream.get_line_count() > _EVENT_MAX_LINES:
+		var full: String = event_stream.get_parsed_text()
+		var lines: PackedStringArray = full.split("\n", false)
+		var keep_from: int = max(0, lines.size() - _EVENT_MAX_LINES)
+		var kept: PackedStringArray = lines.slice(keep_from)
+		event_stream.clear()
+		event_stream.append_text("\n".join(kept))
+
+func _toggle_event_panel() -> void:
+	_event_panel_expanded = not _event_panel_expanded
+	var tween := create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC)
+	tween.set_ease(Tween.EASE_OUT)
+	if _event_panel_expanded:
+		event_stream_toggle.text = "▲ 世界播报（点击收起）"
+		event_stream_scroll.visible = true
+		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_EXPANDED_TOP, 0.22)
+	else:
+		event_stream_toggle.text = "▼ 世界播报（点击展开）"
+		tween.tween_property(event_stream_panel, "offset_top", _EVENT_PANEL_COLLAPSED_TOP, 0.22)
+		tween.tween_callback(func(): event_stream_scroll.visible = false)
+
+static func _country_name(c: String) -> String:
+	match c:
+		"qin": return "秦"
+		"zhao": return "赵"
+		"qi": return "齐"
+		_: return c
+
+# === 三国朝议聊天室（v7.3.8 话题内容归集） ===
+var _chatroom_expanded: bool = false
+
+func _on_chat_message(country: String, target: String, text: String, is_public: bool = true) -> void:
+	if chatroom_log == null:
+		return
+	var color_map := {"qin": "#ff9060", "zhao": "#66d0ff", "qi": "#a0ff90"}
+	var color: String = String(color_map.get(country, "#dddddd"))
+	var header: String = ""
+	if is_public:
+		header = "[%s 谓众]" % _country_name(country)
+	else:
+		header = "[%s 私谓 %s]" % [_country_name(country), _country_name(target)]
+	if is_public:
+		chatroom_log.append_text("[color=%s]%s[/color] %s\n" % [color, header, text])
+	else:
+		# 私聊：暗字 + 斜体
+		chatroom_log.append_text("[color=#888888][i]%s %s[/i][/color]\n" % [header, text])
+		# v7.3.10：私谓事件在地图两城池中点生成可点击密信图标
+		_spawn_secret_letter(country, target, text)
+
+# v7.3.9：把 agent_action 的 narrative 推进朝议（统一入口）
+func _append_chatroom(country: String, text: String) -> void:
+	if chatroom_log == null:
+		return
+	var color_map := {"qin": "#ff9060", "zhao": "#66d0ff", "qi": "#a0ff90"}
+	var color: String = String(color_map.get(country, "#dddddd"))
+	chatroom_log.append_text("[color=%s][%s][/color] %s\n" % [color, _country_name(country), text])
+
+# === 召见通知弹窗（屏幕中央，按'善'关闭）===
+func _pop_summon_notice(country: String) -> void:
+	if summon_notice == null:
+		return
+	var name_str: String = _country_name(country)
+	summon_label.text = "%s王欲召见你" % name_str
+	if summon_hint != null:
+		summon_hint.text = "请前往 %s 完成面谈" % name_str
+	summon_notice.visible = true
+	summon_notice.z_index = 100
+
+func _on_summon_notice_confirm() -> void:
+	if summon_notice != null:
+		summon_notice.visible = false
+
+# === 召见标记 + 密信标记（v7.3.10：地图可点击事件） ===
+
+# 初始化 3 个城池的红色感叹号标记（城池右上角，初始隐藏）
+func _init_summon_marks() -> void:
+	if map_layer == null:
+		return
+	for c in ["qin", "zhao", "qi"]:
+		var node: Sprite2D = get_node_or_null("MapLayer/Node%s" % _country_cap(c))
+		if node == null:
+			continue
+		var mark: Label = Label.new()
+		mark.name = "SummonMark"
+		mark.text = "!"
+		mark.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
+		mark.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+		mark.add_theme_constant_override("outline_size", 4)
+		mark.add_theme_font_size_override("font_size", 160)
+		# 标记位于城池右上角偏移（城池 Sprite2D 原点居中，向右上偏 70px）
+		mark.position = Vector2(60, -100)
+		mark.z_index = 50
+		mark.visible = false
+		node.add_child(mark)
+		_summon_marks[c] = mark
+
+# 国名首字母大写（用于拼节点路径 NodeQin/NodeZhao/NodeQi）
+static func _country_cap(c: String) -> String:
+	match c:
+		"qin": return "Qin"
+		"zhao": return "Zhao"
+		"qi": return "Qi"
+		_: return c.capitalize()
+
+# 显示某国召见标记（红感叹号）
+func _show_summon_mark(country: String) -> void:
+	var mark: Label = _summon_marks.get(country, null)
+	if mark != null:
+		mark.visible = true
+
+# 隐藏某国召见标记
+func _hide_summon_mark(country: String) -> void:
+	var mark: Label = _summon_marks.get(country, null)
+	if mark != null:
+		mark.visible = false
+
+# v7.3.10：隐藏所有召见标记（dialogue 期间调用 —— 红感叹号不可在其他界面出现）
+func _hide_all_summon_marks() -> void:
+	for c in _summon_marks.keys():
+		var mark: Label = _summon_marks[c]
+		if mark != null:
+			mark.visible = false
+
+# v7.3.10：智能恢复召见标记 —— 只对仍处于 summon 状态且未 done 的国家亮起
+# 调用时机：回主地图时（dialogue_finished）/ _on_all_finished 兜底
+func _refresh_all_summon_marks() -> void:
+	if typeof(AgentManager) != TYPE_OBJECT:
+		return
+	for c in ["qin", "zhao", "qi"]:
+		var mark: Label = _summon_marks.get(c, null)
+		if mark == null:
+			continue
+		# 已被玩家处理过的国家 → 不亮
+		if String(State.country_states.get(c, "")) == "done":
+			mark.visible = false
+			continue
+		# 当前 AgentManager 状态仍是 summon → 亮
+		var st: String = ""
+		if AgentManager.has_method("get_country_status"):
+			st = AgentManager.get_country_status(c)
+		mark.visible = (st == "召见")
+
+# === 密信标记（私谓事件在两城池中点生成可点击图标） ===
+# 每条密信标记 = Sprite2D 背景 + 红色感叹号 + 点击 Area2D
+# 点击弹出"密信"文本框（PanelContainer 居中）
+
+# 在两城池中点创建一个密信图标
+func _spawn_secret_letter(speaker: String, target: String, text: String) -> void:
+	if map_layer == null:
+		return
+	var pos_a: Vector2 = country_positions.get(speaker, Vector2.ZERO)
+	var pos_b: Vector2 = country_positions.get(target, Vector2.ZERO)
+	var mid: Vector2 = (pos_a + pos_b) / 2.0
+	# 创建图标容器（Button 即可点击，用图形/文字代替纹理）
+	var btn: Button = Button.new()
+	btn.text = "✉"
+	btn.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	btn.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	btn.add_theme_constant_override("outline_size", 4)
+	btn.add_theme_font_size_override("font_size", 24)
+	btn.custom_minimum_size = Vector2(44, 44)
+	btn.position = mid - Vector2(22, 22)
+	btn.z_index = 40
+	# 红色感叹号子节点（右上角）
+	var exclam: Label = Label.new()
+	exclam.text = "!"
+	exclam.add_theme_color_override("font_color", Color(1, 0.2, 0.2))
+	exclam.add_theme_color_override("font_outline_color", Color(0, 0, 0))
+	exclam.add_theme_constant_override("outline_size", 3)
+	exclam.add_theme_font_size_override("font_size", 18)
+	exclam.position = Vector2(28, -8)
+	exclam.z_index = 41
+	btn.add_child(exclam)
+	# 点击 → 弹密信文本框；点开后奖励 1 张情报牌，"阅"后从地图移除图标
+	var header: String = "[ %s 私谓 %s ]" % [_country_name(speaker), _country_name(target)]
+	btn.pressed.connect(func(): _pop_secret_letter(header, text, speaker, target, btn))
+	map_layer.add_child(btn)
+	_secret_letter_marks.append(btn)
+	_turn_secret_letter_spawned = true
+
+# 清理上一轮的密信图标（每轮开始时调用）
+func _clear_secret_letters() -> void:
+	for btn in _secret_letter_marks:
+		if is_instance_valid(btn):
+			btn.queue_free()
+	_secret_letter_marks.clear()
+	_turn_secret_letter_spawned = false
+
+# v7.3.10：批量显隐所有密信图标（dialogue 期间隐藏，回主地图恢复）
+func _set_secret_letters_visible(vis: bool) -> void:
+	for btn in _secret_letter_marks:
+		if is_instance_valid(btn):
+			btn.visible = vis
+
+# v7.3.10：从地图移除指定密信 button（点击"阅"后调用）
+func _remove_secret_letter(btn: Button) -> void:
+	var idx: int = _secret_letter_marks.find(btn)
+	if idx >= 0:
+		_secret_letter_marks.remove_at(idx)
+	if is_instance_valid(btn):
+		btn.queue_free()
+
+
+# 兜底：本回合无自然 chat_message 时，生成一封"密语风闻"密信
+func _spawn_fallback_secret_letter() -> void:
+	if _turn_secret_letter_spawned:
+		return
+	if map_layer == null:
+		return
+	# 随机选两国做密信双方（保证不是同一国）
+	var pairs: Array = [["qin", "zhao"], ["qin", "qi"], ["zhao", "qi"]]
+	var pair: Array = pairs[randi() % pairs.size()]
+	var speaker: String = pair[0]
+	var target: String = pair[1]
+	# 风闻池（不基于真实 chat，纯环境氛围）
+	var rumors: Array = [
+		"%s遣客卿夜入%s都城，密会其近臣，所谋未明。",
+		"%s斥候于%s边境见车马往来，疑有私约。",
+		"%s市井间传%s使者曾入相府，事秘不可闻。",
+		"%s密使持帛书入%s，归后不言其事，朝议纷纭。",
+	]
+	var tmpl: String = rumors[randi() % rumors.size()]
+	var body: String = tmpl % [_country_name(speaker), _country_name(target)]
+	_spawn_secret_letter(speaker, target, body)
+
+
+# 弹出"密信"文本框（屏幕中央，按"阅"关闭）
+# v7.3.10：首次点开密信奖励 1 张情报牌（用 _secret_claimed 防重复领取）
+var _secret_claimed: Dictionary = {}  # header -> bool
+func _pop_secret_letter(header: String, body: String, speaker: String = "", target: String = "", btn: Button = null) -> void:
+	var layer: CanvasLayer = CanvasLayer.new()
+	layer.layer = 15
+	add_child(layer)
+	# CanvasLayer 不是 Control，其下的 Control 节点不能用 anchor —— 必须先挂一个 Control 根
+	var root: Control = Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	layer.add_child(root)
+	var dim: ColorRect = ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(dim)
+	var panel: PanelContainer = PanelContainer.new()
+	# 屏幕正中央：anchor 四边中点 0.5，offset 反向半个尺寸
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
+	panel.custom_minimum_size = Vector2(560, 280)
+	panel.offset_left = -280.0   # -custom_min_size.x / 2
+	panel.offset_top = -140.0   # -custom_min_size.y / 2
+	panel.offset_right = 280.0
+	panel.offset_bottom = 140.0
+	panel.z_index = 16
+	root.add_child(panel)
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 12)
+	panel.add_child(vbox)
+	var title: Label = Label.new()
+	title.text = "密信"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_color_override("font_color", Color(1, 0.9, 0.5))
+	title.add_theme_font_size_override("font_size", 22)
+	vbox.add_child(title)
+	var from: Label = Label.new()
+	from.text = header
+	from.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	from.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+	from.add_theme_font_size_override("font_size", 14)
+	vbox.add_child(from)
+	var body_label: Label = Label.new()
+	body_label.text = body
+	body_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.8))
+	body_label.add_theme_font_size_override("font_size", 16)
+	vbox.add_child(body_label)
+	# v7.3.10：首次点开 → 奖励 1 张情报牌
+	var claimed_label: Label = Label.new()
+	claimed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	claimed_label.add_theme_font_size_override("font_size", 13)
+	claimed_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	vbox.add_child(claimed_label)
+	if not _secret_claimed.get(header, false) and speaker != "" and target != "":
+		var intel_text: String = "[密信·%s→%s] %s" % [_country_name(speaker), _country_name(target), body]
+		State.intel_hand.append(intel_text)
+		_secret_claimed[header] = true
+		claimed_label.text = "【截获密信，已入情报手牌】"
+		claimed_label.add_theme_color_override("font_color", Color(0.6, 1, 0.6))
+		_refresh_hand_ui()
+	elif _secret_claimed.get(header, false):
+		claimed_label.text = "【此信已阅】"
+		claimed_label.add_theme_color_override("font_color", Color(0.6, 0.6, 0.6))
+	var close_btn: Button = Button.new()
+	close_btn.text = "阅"
+	close_btn.custom_minimum_size = Vector2(120, 36)
+	close_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	close_btn.add_theme_font_size_override("font_size", 18)
+	close_btn.pressed.connect(func():
+		layer.queue_free()
+		# v7.3.10：点"阅"后从地图移除密信图标
+		if btn != null and is_instance_valid(btn):
+			_remove_secret_letter(btn)
+	)
+	vbox.add_child(close_btn)
+	layer.add_child(panel)
+
+
+
+const _CHATROOM_COLLAPSED_BOTTOM: float = 150.0
+const _CHATROOM_EXPANDED_BOTTOM: float = 400.0
+
+func _toggle_chatroom_panel() -> void:
+	_chatroom_expanded = not _chatroom_expanded
+	chatroom_scroll.visible = _chatroom_expanded
+	if _chatroom_expanded:
+		chatroom_toggle.text = "▼ 博弈议事（点击收起）"
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_CUBIC)
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_property(chatroom_panel, "offset_bottom", _CHATROOM_EXPANDED_BOTTOM, 0.22)
+	else:
+		chatroom_toggle.text = "▶ 博弈议事（点击展开）"
+		var tween := create_tween()
+		tween.set_trans(Tween.TRANS_CUBIC)
+		tween.set_ease(Tween.EASE_OUT)
+		tween.tween_property(chatroom_panel, "offset_bottom", _CHATROOM_COLLAPSED_BOTTOM, 0.22)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("debug_dump"):
+		print(State.dump_state())

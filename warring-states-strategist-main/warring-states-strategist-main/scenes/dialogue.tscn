@@ -1,0 +1,313 @@
+[gd_scene format=3 uid="uid://dmedkecjruvgy"]
+
+[ext_resource type="Script" uid="uid://bee7jn6cq6s6e" path="res://scripts/ui/dialogue.gd" id="1_dlg"]
+[ext_resource type="Texture2D" uid="uid://djectqlyhud8h" path="res://assets/bg/dialogue_qin.png" id="bg_qin"]
+
+[sub_resource type="StyleBoxFlat" id="label_bg_dark"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 12.0
+content_margin_bottom = 8.0
+bg_color = Color(0, 0, 0, 0.7)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[node name="Dialogue" type="Node2D" unique_id=354271794]
+position = Vector2(0, 1)
+script = ExtResource("1_dlg")
+
+[node name="BG" type="Sprite2D" parent="." unique_id=45268487]
+position = Vector2(571, 315)
+scale = Vector2(1.801949, 1.8493667)
+texture = ExtResource("bg_qin")
+
+[node name="UILayer" type="CanvasLayer" parent="." unique_id=1861316084]
+
+[node name="Portrait" type="Sprite2D" parent="UILayer" unique_id=102933119]
+z_index = 100
+position = Vector2(175, 350)
+scale = Vector2(0.675, 0.675)
+
+[node name="Root" type="MarginContainer" parent="UILayer" unique_id=573579066]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/margin_left = 380
+theme_override_constants/margin_top = 20
+theme_override_constants/margin_right = 40
+theme_override_constants/margin_bottom = 20
+
+[node name="VBox" type="VBoxContainer" parent="UILayer/Root" unique_id=204484831]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="BriefingPanel" type="PanelContainer" parent="UILayer/Root/VBox" unique_id=699967985]
+layout_mode = 2
+
+[node name="BriefingVBox" type="VBoxContainer" parent="UILayer/Root/VBox/BriefingPanel" unique_id=1820521577]
+layout_mode = 2
+
+[node name="BriefingTitle" type="Label" parent="UILayer/Root/VBox/BriefingPanel/BriefingVBox" unique_id=630342865]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_font_sizes/font_size = 13
+text = "召见前情摘要"
+
+[node name="BriefingLabel" type="Label" parent="UILayer/Root/VBox/BriefingPanel/BriefingVBox" unique_id=1010572471]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.9, 0.85, 1)
+theme_override_font_sizes/font_size = 12
+autowrap_mode = 2
+
+[node name="MonarchSpeechPanel" type="PanelContainer" parent="UILayer/Root/VBox" unique_id=1713358653]
+layout_mode = 2
+
+[node name="MonarchSpeech" type="Label" parent="UILayer/Root/VBox/MonarchSpeechPanel" unique_id=712723434]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.9, 0.7, 1)
+theme_override_font_sizes/font_size = 15
+text = "..."
+autowrap_mode = 2
+
+[node name="ChatBox" type="PanelContainer" parent="UILayer/Root/VBox" unique_id=49711519]
+visible = false
+custom_minimum_size = Vector2(0, 420)
+layout_mode = 2
+
+[node name="ChatVBox" type="VBoxContainer" parent="UILayer/Root/VBox/ChatBox" unique_id=1436647652]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="ChatScroll" type="ScrollContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox" unique_id=2131927911]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+vertical_scroll_mode = 2
+
+[node name="ChatLog" type="VBoxContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox/ChatScroll" unique_id=1796914338]
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="StatusBar" type="HBoxContainer" parent="UILayer/Root/VBox/ChatBox/ChatVBox" unique_id=305781016]
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StatusLabel" type="Label" parent="UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar" unique_id=1919119527]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.8, 0.8, 0.7, 1)
+theme_override_font_sizes/font_size = 12
+text = "等待开辩…"
+vertical_alignment = 1
+
+[node name="EndDebateBtn" type="Button" parent="UILayer/Root/VBox/ChatBox/ChatVBox/StatusBar" unique_id=231896787]
+custom_minimum_size = Vector2(120, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "结束辩论"
+
+[node name="PresetVBox" type="VBoxContainer" parent="UILayer/Root/VBox" unique_id=484658952]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="PresetA" type="Button" parent="UILayer/Root/VBox/PresetVBox" unique_id=1095396722]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "A. 加载中…"
+autowrap_mode = 2
+
+[node name="PresetB" type="Button" parent="UILayer/Root/VBox/PresetVBox" unique_id=1575820445]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "B. 加载中…"
+autowrap_mode = 2
+
+[node name="PresetC" type="Button" parent="UILayer/Root/VBox/PresetVBox" unique_id=1638386743]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "C. 加载中…"
+autowrap_mode = 2
+
+[node name="OthersBtn" type="Button" parent="UILayer/Root/VBox/PresetVBox" unique_id=1451777710]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "others 自己说"
+
+[node name="InputBox" type="TextEdit" parent="UILayer/Root/VBox" unique_id=110452281]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+placeholder_text = "在此输入对君主的表态（可用白话，谋士会代拟）…"
+wrap_mode = 1
+
+[node name="SubmitHBox" type="HBoxContainer" parent="UILayer/Root/VBox" unique_id=586355838]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="AdvisorButton" type="Button" parent="UILayer/Root/VBox/SubmitHBox" unique_id=950511411]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+text = "让谋士代拟"
+
+[node name="SubmitButton" type="Button" parent="UILayer/Root/VBox/SubmitHBox" unique_id=89442281]
+custom_minimum_size = Vector2(0, 44)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 15
+text = "直言进谏"
+
+[node name="AdvisorPreviewPanel" type="PanelContainer" parent="UILayer/Root/VBox" unique_id=1033083848]
+visible = false
+layout_mode = 2
+
+[node name="AdvisorPreviewVBox" type="VBoxContainer" parent="UILayer/Root/VBox/AdvisorPreviewPanel" unique_id=513103105]
+layout_mode = 2
+
+[node name="AdvisorTitle" type="Label" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox" unique_id=246189653]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "谋士代拟稿："
+
+[node name="AdvisorPreviewLabel" type="Label" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox" unique_id=1699612165]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+autowrap_mode = 2
+
+[node name="AdvisorConfirmHBox" type="HBoxContainer" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox" unique_id=1643638632]
+layout_mode = 2
+
+[node name="AdvisorConfirmBtn" type="Button" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox" unique_id=2075910360]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "以此稿进谏"
+
+[node name="AdvisorRejectBtn" type="Button" parent="UILayer/Root/VBox/AdvisorPreviewPanel/AdvisorPreviewVBox/AdvisorConfirmHBox" unique_id=1964712048]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "还是我自己说"
+
+[node name="ResultLabel" type="Label" parent="UILayer/Root/VBox" unique_id=1827850174]
+custom_minimum_size = Vector2(0, 100)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.85, 1, 0.85, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("label_bg_dark")
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="TopLabel" type="Label" parent="UILayer" unique_id=18245192]
+offset_left = 60.0
+offset_top = 20.0
+offset_right = 290.0
+offset_bottom = 60.0
+theme_override_colors/font_color = Color(1, 0.9, 0.5, 1)
+theme_override_font_sizes/font_size = 36
+theme_override_styles/normal = SubResource("label_bg_dark")
+text = "面谈"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="NameLabel" type="Label" parent="UILayer" unique_id=1541078803]
+offset_left = 60.0
+offset_top = 650.0
+offset_right = 290.0
+offset_bottom = 690.0
+theme_override_colors/font_color = Color(1, 0.92, 0.55, 1)
+theme_override_font_sizes/font_size = 22
+theme_override_styles/normal = SubResource("label_bg_dark")
+text = "..."
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="InterceptPanel" type="PanelContainer" parent="UILayer" unique_id=547869357]
+visible = false
+z_index = 200
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -520.0
+offset_top = -320.0
+offset_right = -20.0
+offset_bottom = -20.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_styles/panel = SubResource("label_bg_dark")
+
+[node name="InterceptVBox" type="VBoxContainer" parent="UILayer/InterceptPanel" unique_id=751575934]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="InterceptTitle" type="Label" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=512681933]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
+theme_override_font_sizes/font_size = 13
+text = "▶ 谋士正欲进言（10s 后自动送出）"
+
+[node name="InterceptDraftLabel" type="Label" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=2044685301]
+custom_minimum_size = Vector2(480, 70)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.95, 0.95, 0.75, 1)
+theme_override_font_sizes/font_size = 14
+autowrap_mode = 2
+
+[node name="InterceptCountdownLabel" type="Label" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=2114799081]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.75, 0.15, 1)
+theme_override_font_sizes/font_size = 20
+text = "10"
+horizontal_alignment = 1
+
+[node name="InterceptHBox" type="HBoxContainer" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=1999245751]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="InterceptOkBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox/InterceptHBox" unique_id=1264526397]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "就这样进言"
+
+[node name="InterceptAddBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox/InterceptHBox" unique_id=1481510313]
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 13
+text = "我有补充"
+
+[node name="InterceptInputBox" type="TextEdit" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=7653452]
+visible = false
+custom_minimum_size = Vector2(480, 70)
+layout_mode = 2
+placeholder_text = "对谋士下指令（白话）：'再犀利点'、'提唇亡齿寒'…"
+wrap_mode = 1
+
+[node name="InterceptRegenBtn" type="Button" parent="UILayer/InterceptPanel/InterceptVBox" unique_id=803938979]
+visible = false
+custom_minimum_size = Vector2(0, 34)
+layout_mode = 2
+theme_override_font_sizes/font_size = 13
+text = "发给谋士"

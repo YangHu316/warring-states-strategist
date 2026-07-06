@@ -1,0 +1,19 @@
+{
+  "templates": {
+    "tpl_border_conflict": {
+      "title": "边境冲突",
+      "text": "{location} 一带冸突发生冲突，各君主态度推动。",
+      "effects": []
+    },
+    "tpl_diplomatic_envoy": {
+      "title": "使者互访",
+      "text": "{from} 国遭遣使者出访 {to} 国，外交格局生变。",
+      "effects": []
+    },
+    "tpl_decisive_moment": {
+      "title": "决择时刻",
+      "text": "{theme}：本回合后将进行最终结算。",
+      "effects": []
+    }
+  }
+}

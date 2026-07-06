@@ -9,10 +9,11 @@ extends Node2D
 @onready var event_stream_panel: PanelContainer = $UILayer/EventStreamPanel
 @onready var event_stream_toggle: Button = $UILayer/EventStreamPanel/VBox/TitleBar/EventStreamToggle
 @onready var event_stream_scroll: ScrollContainer = $UILayer/EventStreamPanel/VBox/EventStreamScroll
-@onready var chatroom_panel: PanelContainer = $UILayer/ChatRoomPanel
-@onready var chatroom_toggle: Button = $UILayer/ChatRoomPanel/VBox/ChatToggle
+@onready var chatroom_panel: Control = $UILayer/ChatRoomPanel
+@onready var chatroom_toggle: TextureButton = $UILayer/ChatRoomPanel/VBox/ChatToggle
 @onready var chatroom_scroll: ScrollContainer = $UILayer/ChatRoomPanel/VBox/ChatScroll
 @onready var chatroom_log: RichTextLabel = $UILayer/ChatRoomPanel/VBox/ChatScroll/ChatLog
+@onready var chatroom_bg_expand: TextureRect = $UILayer/ChatRoomPanel/BgExpand
 @onready var action_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/ActionPanel/ActionCardsHBox
 @onready var intel_cards_hbox: HBoxContainer = $UILayer/HandPanel/HBox/IntelPanel/IntelScroll/IntelCardsHBox
 @onready var hand_panel: PanelContainer = $UILayer/HandPanel
@@ -126,6 +127,7 @@ func _ready() -> void:
 	restart_button.pressed.connect(_on_restart_pressed)
 	event_stream_toggle.pressed.connect(_toggle_event_panel)
 	chatroom_toggle.pressed.connect(_toggle_chatroom_panel)
+	call_deferred("_offset_chatroom_scroll")
 	if summon_confirm_btn != null:
 		summon_confirm_btn.pressed.connect(_on_summon_notice_confirm)
 
@@ -152,6 +154,78 @@ func _ready() -> void:
 
 	_refresh_top_bar()
 	_update_player_icon()
+	_setup_key_event_banner_bg()
+	_setup_action_button_bg()
+	_setup_event_stream_bg()
+
+func _setup_action_button_bg() -> void:
+	var bar_path := "res://assets/ui/bar_btn_bg.png"
+	if not ResourceLoader.exists(bar_path):
+		return
+	var sbt := StyleBoxTexture.new()
+	sbt.texture = load(bar_path)
+	sbt.texture_margin_left = 0.0
+	sbt.texture_margin_top = 0.0
+	sbt.texture_margin_right = 0.0
+	sbt.texture_margin_bottom = 0.0
+	sbt.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	sbt.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	for btn in [next_turn_button, dump_button, restart_button]:
+		btn.add_theme_stylebox_override("normal", sbt)
+		btn.add_theme_stylebox_override("hover", sbt)
+		btn.add_theme_stylebox_override("pressed", sbt)
+		btn.add_theme_stylebox_override("disabled", sbt)
+	next_turn_button.custom_minimum_size.y = 60.0
+	dump_button.custom_minimum_size.y = 45.0
+	restart_button.custom_minimum_size.y = 45.0
+
+func _setup_event_stream_bg() -> void:
+	var bg_path := "res://assets/ui/dialog_bg01.png"
+	if not ResourceLoader.exists(bg_path):
+		return
+	# 面板本身透明：这样「未展开」时只显示标题栏，不显示背景框；
+	# 背景框挂在下方滚动区，展开后才出现，且位于标题栏下面。
+	event_stream_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+	# 卷轴纸张背景图挂到滚动容器 EventStreamScroll：它在标题栏下方、
+	# 只在展开时可见，且尺寸固定（不随文字滚动），大小与上一步一致。
+	var sbt := StyleBoxTexture.new()
+	sbt.texture = load(bg_path)
+	sbt.texture_margin_left = 0.0
+	sbt.texture_margin_top = 0.0
+	sbt.texture_margin_right = 0.0
+	sbt.texture_margin_bottom = 0.0
+	sbt.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	sbt.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	# 向外扩绘：左右保持不变（宽度不变），上下加大让卷轴框整体拉长
+	sbt.expand_margin_left = 18.0
+	sbt.expand_margin_right = 18.0
+	sbt.expand_margin_top = 52.0
+	sbt.expand_margin_bottom = 52.0
+	event_stream_scroll.add_theme_stylebox_override("panel", sbt)
+	# 文字底透明，用左右内边距整体缩窄、一排少几个字，并让文字落在卷轴框内
+	var text_sb := StyleBoxEmpty.new()
+	text_sb.content_margin_left = 28.0
+	text_sb.content_margin_right = 10.0
+	text_sb.content_margin_top = 14.0
+	text_sb.content_margin_bottom = 16.0
+	event_stream.add_theme_stylebox_override("normal", text_sb)
+	event_stream.add_theme_color_override("default_color", Color(0, 0, 0, 1))
+	# 确保按词自动换行，让文字随缩窄后的宽度重新折行
+	event_stream.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+
+func _setup_key_event_banner_bg() -> void:
+	var banner_path := "res://assets/ui/key_event_banner.png"
+	if not ResourceLoader.exists(banner_path):
+		return
+	var sbt := StyleBoxTexture.new()
+	sbt.texture = load(banner_path)
+	sbt.texture_margin_left = 0.0
+	sbt.texture_margin_top = 0.0
+	sbt.texture_margin_right = 0.0
+	sbt.texture_margin_bottom = 0.0
+	sbt.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	sbt.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_STRETCH
+	key_event_banner.add_theme_stylebox_override("normal", sbt)
 
 func _load_sfx() -> void:
 	sfx_play = load("res://assets/audio/sfx_card_play.wav")
@@ -297,14 +371,6 @@ func _refresh_hand_ui() -> void:
 		if tex_path != "" and ResourceLoader.exists(tex_path):
 			b.texture_normal = load(tex_path)
 		b.pressed.connect(func(): _on_action_card_pressed(i))
-		var rate_bg := StyleBoxFlat.new()
-		rate_bg.bg_color = Color(0, 0, 0, 0.55)
-		rate_bg.corner_radius_top_left = 3
-		rate_bg.corner_radius_top_right = 3
-		rate_bg.corner_radius_bottom_left = 3
-		rate_bg.corner_radius_bottom_right = 3
-		rate_bg.content_margin_left = 4.0
-		rate_bg.content_margin_right = 4.0
 		var rate_lbl := Label.new()
 		rate_lbl.text = "%d%%" % _preview_rate(c)
 		rate_lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -312,7 +378,6 @@ func _refresh_hand_ui() -> void:
 		rate_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 		rate_lbl.add_theme_font_size_override("font_size", 14)
 		rate_lbl.add_theme_color_override("font_color", Color(1, 0.95, 0.7))
-		rate_lbl.add_theme_stylebox_override("normal", rate_bg)
 		if _chinese_font:
 			rate_lbl.add_theme_font_override("font", _chinese_font)
 		b.add_child(rate_lbl)
@@ -321,21 +386,13 @@ func _refresh_hand_ui() -> void:
 		var item: Variant = State.intel_hand[i]
 		var txt: String = String(item) if typeof(item) != TYPE_DICTIONARY else String((item as Dictionary).get("text", "情报"))
 		var b2 := TextureButton.new()
-		b2.custom_minimum_size = Vector2(185, 72)
+		b2.custom_minimum_size = Vector2(120, 155)
 		b2.ignore_texture_size = true
 		b2.stretch_mode = TextureButton.STRETCH_SCALE
 		b2.modulate = Color(1.25, 1.2, 1.15, 1)
 		var intel_path: String = String(_CARD_TEXTURES.get("intel", ""))
 		if intel_path != "" and ResourceLoader.exists(intel_path):
 			b2.texture_normal = load(intel_path)
-		var txt_bg := StyleBoxFlat.new()
-		txt_bg.bg_color = Color(0, 0, 0, 0.45)
-		txt_bg.corner_radius_top_left = 3
-		txt_bg.corner_radius_top_right = 3
-		txt_bg.corner_radius_bottom_left = 3
-		txt_bg.corner_radius_bottom_right = 3
-		txt_bg.content_margin_left = 4.0
-		txt_bg.content_margin_right = 4.0
 		var lbl := Label.new()
 		lbl.text = txt
 		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -344,10 +401,23 @@ func _refresh_hand_ui() -> void:
 		lbl.add_theme_font_size_override("font_size", 11)
 		lbl.add_theme_color_override("font_color", Color(1, 1, 1))
 		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.add_theme_stylebox_override("normal", txt_bg)
+		var hover_bg := StyleBoxFlat.new()
+		hover_bg.bg_color = Color(0, 0, 0, 0.55)
+		hover_bg.corner_radius_top_left = 3
+		hover_bg.corner_radius_top_right = 3
+		hover_bg.corner_radius_bottom_left = 3
+		hover_bg.corner_radius_bottom_right = 3
+		hover_bg.content_margin_left = 4.0
+		hover_bg.content_margin_right = 4.0
+		hover_bg.content_margin_top = 4.0
+		hover_bg.content_margin_bottom = 4.0
+		lbl.add_theme_stylebox_override("normal", hover_bg)
+		lbl.visible = false
 		if _chinese_font:
 			lbl.add_theme_font_override("font", _chinese_font)
 		b2.add_child(lbl)
+		b2.mouse_entered.connect(func(): lbl.visible = true)
+		b2.mouse_exited.connect(func(): lbl.visible = false)
 		intel_cards_hbox.add_child(b2)
 
 func _preview_rate(c: Card) -> int:
@@ -495,6 +565,10 @@ func _on_node_clicked(country: String) -> void:
 func _move_player_to(country: String) -> void:
 	_moving = true
 	var pos: Vector2 = country_positions.get(country, player_icon.position)
+	if pos.x < player_icon.position.x:
+		player_icon.flip_h = false
+	elif pos.x > player_icon.position.x:
+		player_icon.flip_h = true
 	var tween := create_tween()
 	tween.tween_property(player_icon, "position", pos, 1.5)
 	tween.finished.connect(func():
@@ -884,6 +958,7 @@ func _refresh_top_bar() -> void:
 func _update_player_icon() -> void:
 	var pos: Vector2 = country_positions.get(State.player_location, Vector2(180, 360))
 	player_icon.position = pos
+	player_icon.flip_h = true
 
 # 世界播报：追加一条事件到右下角 EventStream
 # text: 事件正文（不含 tag 前缀，函数内部按 type 自动加栏目徽章）
@@ -1216,17 +1291,35 @@ func _pop_secret_letter(header: String, body: String, speaker: String = "", targ
 const _CHATROOM_COLLAPSED_BOTTOM: float = 150.0
 const _CHATROOM_EXPANDED_BOTTOM: float = 400.0
 
+func _offset_chatroom_scroll() -> void:
+	# 让播报文字水平居中于「播报」卷轴的中间纸张区域。
+	# 注意：ScrollContainer/VBoxContainer 的布局管理器会覆盖子节点 position，
+	# 因此改用不会被布局覆盖的 StyleBox content_margin 把文字往右推、两侧留白。
+	chatroom_scroll.position.x = 0.0
+	var sb := StyleBoxEmpty.new()
+	sb.content_margin_left = 45.0
+	sb.content_margin_right = 45.0
+	sb.content_margin_top = 6.0
+	sb.content_margin_bottom = 6.0
+	chatroom_log.add_theme_stylebox_override("normal", sb)
+
 func _toggle_chatroom_panel() -> void:
 	_chatroom_expanded = not _chatroom_expanded
 	chatroom_scroll.visible = _chatroom_expanded
+	if chatroom_bg_expand != null:
+		chatroom_bg_expand.visible = _chatroom_expanded
+	var tex_expand := load("res://assets/ui/chat_expand.png") as Texture2D
+	var tex_collapse := load("res://assets/ui/chat_collapse.png") as Texture2D
 	if _chatroom_expanded:
-		chatroom_toggle.text = "▼ 博弈议事（点击收起）"
+		if tex_expand != null:
+			chatroom_toggle.texture_normal = tex_expand
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_CUBIC)
 		tween.set_ease(Tween.EASE_OUT)
 		tween.tween_property(chatroom_panel, "offset_bottom", _CHATROOM_EXPANDED_BOTTOM, 0.22)
 	else:
-		chatroom_toggle.text = "▶ 博弈议事（点击展开）"
+		if tex_collapse != null:
+			chatroom_toggle.texture_normal = tex_collapse
 		var tween := create_tween()
 		tween.set_trans(Tween.TRANS_CUBIC)
 		tween.set_ease(Tween.EASE_OUT)
