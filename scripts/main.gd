@@ -747,6 +747,9 @@ func _update_country_status_labels() -> void:
 
 func _fmt_country_status(country: String) -> String:
 	var st: String = AgentManager.get_country_status(country)
+	# v7.3.10：玩家已处理过的召见/决策 → 显示"已面谈"，不再持续显示"[召见]"
+	if String(State.country_states.get(country, "")) == "done":
+		st = "已面谈"
 	var attrs: Dictionary = State.country_attrs.get(country, {})
 	var line1: String = "%s [%s]" % [_country_name(country), st]
 	var line2: String = "威%d 盟%d 战%d" % [

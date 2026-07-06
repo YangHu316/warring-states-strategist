@@ -534,7 +534,10 @@ func _set_status(text: String) -> void:
 	if status_label != null:
 		status_label.text = text
 
-# === 辩论结束 → 调原 LLM 仲裁出 verdict ===
+# === 辩论结束 → 直接结算（v7.3.10 快速路径，跳过第二次 LLM 仲裁） ===
+# 原 _send_to_verdict 会调 deepseek-v4-pro 慢模型再仲裁一次（最长 30s）
+# 玩家反馈：第一次辩论里君主 [END] 已表达态度，不需要再等 30s
+# 快速路径：直接用玩家开场选的立场 + 君主最后一句作为 response → 走 _apply_stance
 func _end_debate() -> void:
 	if not chat_box.visible:
 		# 已结束（避免 verdict 后再被 callback 重复触发）
@@ -543,11 +546,18 @@ func _end_debate() -> void:
 	var player_text: String = _last_msg_text("right")
 	end_btn.disabled = true
 	chat_box.visible = false
-	# 显示君主 speech 面板（隐藏 ChatBox 后留点空间）
+	# 显示君主 speech 面板
 	monarch_speech_panel.visible = true
-	monarch_speech.text = "君主思忖中…（最长 30 秒）"
-	# 进入原 verdict 流程（关键词兜底 / LLM 仲裁）
-	_send_to_verdict(player_text)
+	# 快速路径：直接取君主最后一条发言作为 response
+	var response_text: String = _last_msg_text("left")
+	if response_text == "":
+		response_text = "寡人已决。"
+	# stance 用玩家开场选的（推合纵/中立/推亲秦）—— 这是第一次"仲裁"的输入
+	var stance: String = _current_stance
+	if stance == "":
+		stance = "中立"
+	# 直接走结算流程，跳过 _send_to_verdict 的第二次 LLM 仲裁
+	_apply_stance(stance, true, response_text, player_text)
 
 # === 动态添加一条聊天行 ===
 func _add_chat_msg(side: String, name: String, text: String) -> void:
