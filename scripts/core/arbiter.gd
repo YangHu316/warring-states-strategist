@@ -1,12 +1,25 @@
 extends Node
-# V2 仲裁器 Autoload。负责：roll_card / parse_dialogue / apply_drift / check_ending / judge_mbti
+# 仲裁器 Autoload（RFC-003 v7.4.0）。负责：roll_card / 世界数值结算 / apply_drift / check_ending / judge_stance
+# 一切行动（玩家打牌、君主博弈、面谈立场）统一结算到 State.world_attrs 三维。
 
-# === 几率 ===
+const _ATTR_LABELS: Dictionary = {
+	"qin_baye": "秦之霸业",
+	"liu_guo_meng": "六国之盟",
+	"tian_xia_fenluan": "天下纷乱"
+}
+
+const _ACTION_CN: Dictionary = {
+	"pressure": "军事施压", "alienate": "遣使离间", "lure": "连横利诱", "prepare": "备战",
+	"seek_alliance": "求盟联齐", "probe": "遣使试探", "observation": "观望",
+	"wait_price": "待价而沽", "hijack": "趁火打劫", "self_protect": "闭门自保",
+	"declare_war": "兴兵"
+}
+
+# === 打牌判定：rate = base_rate + 情报牌加成（RFC-003 §5.2 方案 A，无属性加成） ===
 func roll_card(card_id: String, direction: String, target_country: String, intel_bonus: int = 0) -> Dictionary:
 	var result: Dictionary = {
 		"success": false,
-		"deltas_player": {},
-		"deltas_country": {},
+		"deltas_world": {},
 		"intel": "",
 		"rate": 0
 	}
@@ -19,12 +32,7 @@ func roll_card(card_id: String, direction: String, target_country: String, intel
 		result["success"] = true
 		return result
 
-	var base: int = int(card.base_rate)
-	var coef: float = float(card.scale_coef)
-	var attr: String = String(card.scale_attr)
-	var attr_val: int = int(State.player_attrs.get(attr, 0))
-	var rate: int = int(round(float(base) + float(attr_val) * coef)) + intel_bonus
-	rate = clampi(rate, 5, 95)
+	var rate: int = clampi(int(card.base_rate) + intel_bonus, 5, 95)
 	result["rate"] = rate
 
 	var roll: int = randi() % 100
@@ -32,248 +40,270 @@ func roll_card(card_id: String, direction: String, target_country: String, intel
 	result["success"] = success
 
 	if not success:
-		var on_fail: Dictionary = card.raw.get("on_fail", {"mingwang": -3})
-		result["deltas_player"] = on_fail.duplicate()
+		var on_fail: Dictionary = card.raw.get("on_fail", {"tian_xia_fenluan": 2})
+		result["deltas_world"] = on_fail.duplicate()
 		return result
 
-	# 成功处理
 	match card_id:
 		"persuade", "message", "promise":
 			var on_succ: Dictionary = card.raw.get("on_success", {})
 			var dir_deltas: Variant = on_succ.get(direction, null)
 			if typeof(dir_deltas) == TYPE_DICTIONARY:
-				result["deltas_player"] = (dir_deltas as Dictionary).duplicate()
+				result["deltas_world"] = (dir_deltas as Dictionary).duplicate()
 			else:
-				# fallback neutral
 				var fb: Variant = on_succ.get("neutral", {})
 				if typeof(fb) == TYPE_DICTIONARY:
-					result["deltas_player"] = (fb as Dictionary).duplicate()
+					result["deltas_world"] = (fb as Dictionary).duplicate()
 		"alienate":
-			var mengxin: int = int(State.country_attrs.get(target_country, {}).get("mengxin", 0))
-			if mengxin > 30:
-				var d1: Dictionary = card.raw.get("on_success_high_mengxin", {})
-				result["deltas_player"] = d1.duplicate()
+			# 时机窗：目标仍在谈判中 → 全额拆盟；已定策 → 只添乱
+			var in_talks: bool = false
+			var am = get_node_or_null("/root/AgentManager")
+			if am != null and am.has_method("is_country_negotiating"):
+				in_talks = bool(am.is_country_negotiating(target_country))
+			if in_talks:
+				result["deltas_world"] = (card.raw.get("on_success_in_talks", {}) as Dictionary).duplicate()
 			else:
-				var d2: Dictionary = card.raw.get("on_success_low_mengxin", {})
-				result["deltas_player"] = d2.duplicate()
+				result["deltas_world"] = (card.raw.get("on_success_settled", {}) as Dictionary).duplicate()
 		"spy":
-			var on_succ2: Dictionary = card.raw.get("on_success", {"xinji": 3})
-			result["deltas_player"] = on_succ2.duplicate()
+			result["deltas_world"] = (card.raw.get("on_success", {"tian_xia_fenluan": 1}) as Dictionary).duplicate()
 			result["intel"] = _gen_intel(target_country)
 		_:
 			pass
 	return result
 
-# === Agent 动作 → 国家三维结算（v7.3 §03-2.2） ===
-# 输入 action: {actor, target_country, action_type, ...}
-# 依设计表结算所有相关国家的三维变动。
-# 返回：{deltas: {country: {attr:delta}}, note}
+# === 君主博弈动作 → 世界数值（RFC-003-A §六；按 actor 分组，prepare/observation 各国含义不同） ===
+const MONARCH_ACTION_DELTAS: Dictionary = {
+	"qin": {
+		"pressure":      {"qin_baye": 4, "tian_xia_fenluan": 3},
+		"alienate":      {"liu_guo_meng": -5, "tian_xia_fenluan": 2},
+		"lure":          {"qin_baye": 3, "liu_guo_meng": -3},
+		"prepare":       {"qin_baye": 4}
+	},
+	"zhao": {
+		"seek_alliance": {"liu_guo_meng": 5},
+		"prepare":       {"liu_guo_meng": 2, "tian_xia_fenluan": -1},
+		"probe":         {},
+		"observation":   {"tian_xia_fenluan": 2}
+	},
+	"qi": {
+		"observation":   {"tian_xia_fenluan": 3},
+		"hijack":        {"tian_xia_fenluan": 4},
+		"self_protect":  {"tian_xia_fenluan": -1}
+	}
+}
 
-# v7.3.5 面谈立场结算：君主 monarch 的 proposed_action 被玩家赞同 → 走 settle_agent_action
-# proposed_action_map: 中文动作名 → 英文 action_id 的映射（提供给 dialogue 用）
+func settle_agent_action(action: Dictionary) -> Dictionary:
+	var actor: String = String(action.get("actor", ""))
+	var target: String = String(action.get("target_country", ""))
+	var atype: String = String(action.get("action_type", ""))
+	var am = get_node_or_null("/root/AgentManager")
+	if atype == "declare_war":
+		# 宣战交由战争管理器（横幅/账本/军费由其负责）；失败则退化为施压
+		if WarManager.declare_war(actor, target):
+			return {"deltas": {}, "note": ""}
+		atype = "pressure"
+	# === 资源型动作：真效果（RFC-004 Phase B；兵力单位=万） ===
+	if atype == "prepare":
+		State.apply_national_delta(actor, {"troops": 6})
+		return {"deltas": {}, "note": "%s募兵整训（兵+6万，今兵%d万）" % [_country_name(actor), State.get_national(actor, "troops")]}
+	if atype == "hijack":
+		# 趁火打劫：对战后衰弱方（兵<40）真宣战；不具备条件则退化为旧添乱
+		if State.get_national(actor, "troops") >= 50:
+			for c in ["qin", "zhao", "qi"]:
+				if c != actor and State.get_national(c, "troops") < 40 and WarManager.can_declare(actor, c):
+					if WarManager.declare_war(actor, c):
+						return {"deltas": {}, "note": ""}
+		State.apply_world_delta({"tian_xia_fenluan": 4})
+		return {"deltas": {"tian_xia_fenluan": 4}, "note": "%s·趁火打劫 → %s" % [_country_name(actor), describe_world_delta({"tian_xia_fenluan": 4})]}
+	# === 交易型动作：注入朝议提议，由对方应答（RFC-004 §3.4；报价=城池，不涉财货） ===
+	if atype == "lure" and am != null and am.has_method("inject_proposal"):
+		# 交兵之国无中立之约可言：利诱自动转向第三方（远交近攻）——兜住 LLM 自选目标
+		var wb_l: Dictionary = WarManager.war_brief()
+		if not wb_l.is_empty():
+			var wa_l: String = String(wb_l.get("attacker", ""))
+			var wd_l: String = String(wb_l.get("defender", ""))
+			if (actor == wa_l and target == wd_l) or (actor == wd_l and target == wa_l):
+				for c3 in ["qin", "zhao", "qi"]:
+					if c3 != actor and c3 != target:
+						target = c3
+						break
+		if State.is_neutral_bound(target):
+			State.apply_world_delta({"qin_baye": 2})
+			return {"deltas": {}, "note": "%s与%s中立之约未满，遣使重申旧好而已" % [_country_name(actor), _country_name(target)]}
+		if State.get_national(actor, "cities") < 22 or State.cede_allowance(actor) < 2:
+			State.apply_world_delta({"qin_baye": 3, "liu_guo_meng": -3})
+			return {"deltas": {}, "note": "%s·连横利诱（无城可许，仅施口惠） → %s" % [_country_name(actor), describe_world_delta({"qin_baye": 3, "liu_guo_meng": -3})]}
+		var txt: String = "%s愿以城2座易%s之中立——勿助他国，安享其利。" % [_country_name(actor), _country_name(target)]
+		if am.inject_proposal(actor, target, txt, "lure", 2):
+			return {"deltas": {}, "note": "%s遣使赍礼入%s，许城2座以易中立（待其答复）" % [_country_name(actor), _country_name(target)]}
+		State.apply_world_delta({"qin_baye": 3, "liu_guo_meng": -3})
+		return {"deltas": {}, "note": "%s·连横利诱 → %s" % [_country_name(actor), describe_world_delta({"qin_baye": 3, "liu_guo_meng": -3})]}
+	if atype == "seek_alliance" and am != null and am.has_method("inject_proposal"):
+		if State.has_alliance(actor, target):
+			State.apply_world_delta({"liu_guo_meng": 2})
+			return {"deltas": {}, "note": "%s遣使巩固与%s之盟好" % [_country_name(actor), _country_name(target)]}
+		var txt2: String = "%s愿与%s歃血为盟，共御强敌，同进同退。" % [_country_name(actor), _country_name(target)]
+		# 兵临城下的守方求盟：割一城为质，以表诚意（质城随应盟划转）
+		var zhi_cede: int = 0
+		var wb: Dictionary = WarManager.war_brief()
+		if String(wb.get("defender", "")) == actor and int(wb.get("waypoint", 0)) >= 3 \
+				and State.cede_allowance(actor) >= 1 and State.get_national(actor, "cities") > 8:
+			zhi_cede = 1
+			txt2 = "%s愿纳一城为质，与%s歃血为盟——唇亡齿寒，望速发兵！" % [_country_name(actor), _country_name(target)]
+		if am.inject_proposal(actor, target, txt2, "alliance", zhi_cede):
+			return {"deltas": {}, "note": "%s遣使赴%s请结军事同盟（待其答复）" % [_country_name(actor), _country_name(target)]}
+		State.apply_world_delta({"liu_guo_meng": 5})
+		return {"deltas": {}, "note": "%s·求盟 → %s" % [_country_name(actor), describe_world_delta({"liu_guo_meng": 5})]}
+	if atype == "wait_price" and am != null and am.has_method("answer_pending"):
+		# 待价而沽等的是实利：太平时空口盟约不接、纳质之盟半数动心；
+		# 但兵祸及身（自己是守方）则救亡高于价码，什么盟都接
+		var pp: Dictionary = am.pending_proposal
+		var pp_to_me: bool = String(pp.get("to", "")) == actor
+		var im_defender: bool = String(WarManager.war_brief().get("defender", "")) == actor
+		if pp_to_me and String(pp.get("kind", "")) == "alliance" and not im_defender:
+			var pp_zhi: int = int(pp.get("cede", 0))
+			if pp_zhi <= 0 or randf() < 0.65:
+				var ans_no: String = String(am.answer_pending(actor, false))
+				if ans_no != "":
+					var why: String = "空口之盟不受" if pp_zhi <= 0 else "一城之质，未足易%s之兵" % _country_name(actor)
+					return {"deltas": {}, "note": "%s待价而沽：%s" % [_country_name(actor), why]}
+		var ans: String = String(am.answer_pending(actor, true))
+		if ans != "":
+			return {"deltas": {}, "note": ans}
+		State.apply_world_delta({"tian_xia_fenluan": 2})
+		return {"deltas": {}, "note": "%s待价而沽，然无人出价" % _country_name(actor)}
+	# === 其余动作：舆论余量 ===
+	var deltas: Dictionary = (MONARCH_ACTION_DELTAS.get(actor, {}) as Dictionary).get(atype, {})
+	if deltas.is_empty():
+		return {"deltas": {}, "note": ""}
+	State.apply_world_delta(deltas)
+	var label: String = String(_ACTION_CN.get(atype, atype))
+	return {"deltas": deltas, "note": "%s·%s → %s" % [_country_name(actor), label, describe_world_delta(deltas)]}
+
+# === 面谈立场结算：君主 proposed_action × 玩家立场 → 世界数值（RFC-003-A §五 33 条） ===
+# 调参（RFC-003-A §十）：推合纵分支的 qin_baye -2 一律加大到 -3
 const PROPOSED_ACTION_MAP: Dictionary = {
 	"军事施压": "pressure", "遣使离间": "alienate", "连横利诱": "lure", "备战蓄力": "prepare",
 	"求盟联齐": "seek_alliance", "备战固境": "prepare", "遣使试探": "probe", "骑墙观望": "observation",
 	"观望渔利": "observation", "待价而沽": "wait_price", "趁火打劫": "hijack", "闭门自保": "self_protect"
 }
 
-func settle_proposed_action(monarch: String, proposed_action: String, target: String = "") -> Dictionary:
-	# 若 proposed_action 是中文名，先翻译
-	var action_id: String = String(PROPOSED_ACTION_MAP.get(proposed_action, proposed_action))
-	# 若 target 为空，用一个默认目标（对手最强/最弱国）
-	if target == "":
-		target = _default_target_for(monarch, action_id)
-	var action: Dictionary = {
-		"actor": monarch,
-		"target_country": target,
-		"action_type": action_id
+const STANCE_AWARE_DELTAS: Dictionary = {
+	"qin": {
+		"pressure": {
+			"推合纵": {"qin_baye": -3, "liu_guo_meng": 2, "tian_xia_fenluan": -1},
+			"推亲秦": {"qin_baye": 5, "tian_xia_fenluan": 3},
+			"中立":   {"qin_baye": 2, "tian_xia_fenluan": 2}
+		},
+		"alienate": {
+			"推合纵": {"liu_guo_meng": 3, "tian_xia_fenluan": -2},
+			"推亲秦": {"liu_guo_meng": -8, "qin_baye": 3, "tian_xia_fenluan": 2},
+			"中立":   {"liu_guo_meng": -3, "tian_xia_fenluan": 1}
+		},
+		"lure": {
+			"推合纵": {"qin_baye": -3, "liu_guo_meng": 2},
+			"推亲秦": {"qin_baye": 4, "liu_guo_meng": -5},
+			"中立":   {"qin_baye": 2, "liu_guo_meng": -2}
+		},
+		"prepare": {
+			"推合纵": {"qin_baye": -3, "liu_guo_meng": 2},
+			"推亲秦": {"qin_baye": 5},
+			"中立":   {"qin_baye": 2}
+		}
+	},
+	"zhao": {
+		"seek_alliance": {
+			"推合纵": {"liu_guo_meng": 6, "qin_baye": -3},
+			"推亲秦": {"qin_baye": 3, "liu_guo_meng": -3},
+			"中立":   {"liu_guo_meng": 3}
+		},
+		"prepare": {
+			"推合纵": {"liu_guo_meng": 2, "qin_baye": -1},
+			"推亲秦": {"qin_baye": 2, "liu_guo_meng": -2},
+			"中立":   {"liu_guo_meng": 1}
+		},
+		"probe": {
+			"推合纵": {"liu_guo_meng": 1},
+			"推亲秦": {"qin_baye": 1},
+			"中立":   {}
+		},
+		"observation": {
+			"推合纵": {"liu_guo_meng": 3, "tian_xia_fenluan": -1},
+			"推亲秦": {"qin_baye": 2, "tian_xia_fenluan": 2},
+			"中立":   {"tian_xia_fenluan": 2}
+		}
+	},
+	"qi": {
+		"observation": {
+			"推合纵": {"liu_guo_meng": 4, "tian_xia_fenluan": -2},
+			"推亲秦": {"qin_baye": 2, "tian_xia_fenluan": 2},
+			"中立":   {"tian_xia_fenluan": 2}
+		},
+		"wait_price": {
+			"推合纵": {"liu_guo_meng": 3, "qin_baye": -3},
+			"推亲秦": {"qin_baye": 3, "liu_guo_meng": -2},
+			"中立":   {"qin_baye": 1}
+		},
+		"hijack": {
+			"推合纵": {"liu_guo_meng": 2, "tian_xia_fenluan": -1},
+			"推亲秦": {"qin_baye": 2, "tian_xia_fenluan": 3},
+			"中立":   {"tian_xia_fenluan": 2}
+		},
+		"self_protect": {
+			"推合纵": {"liu_guo_meng": 3},
+			"推亲秦": {"qin_baye": 1},
+			"中立":   {"tian_xia_fenluan": -1}
+		}
 	}
-	return settle_agent_action(action)
+}
 
-# v7.3.7 RFC-002：面谈立场结算
-# stance ∈ {"推合纵", "推亲秦", "中立"}
-# 设计原则：
-#   推合纵 = 反制/削弱原动作（合纵国盟信正向）
-#   推亲秦 = 强化原动作
-#   中立   = 原样（等价 settle_proposed_action）
-func settle_proposed_action_with_stance(monarch: String, proposed_action: String, stance: String, target: String = "") -> Dictionary:
-	if stance == "中立":
-		return settle_proposed_action(monarch, proposed_action, target)
+func settle_proposed_action_with_stance(monarch: String, proposed_action: String, stance: String, _target: String = "") -> Dictionary:
 	var action_id: String = String(PROPOSED_ACTION_MAP.get(proposed_action, proposed_action))
-	if target == "":
-		target = _default_target_for(monarch, action_id)
-	var deltas: Dictionary = {}
-	var factor: int = 1 if stance == "推亲秦" else -1  # +1=强化秦, -1=反制/合纵得利
-
-	# 按 action + stance 结算（对齐 C12 §二/三/四 的 stance_aware_actions）
-	if action_id == "pressure":
-		if stance == "推亲秦":
-			_add_delta(deltas, target, {"guowei": -8})
-			_add_delta(deltas, monarch, {"zhanxin": 5})
-		else:  # 推合纵：劝缓兵，秦压力削弱
-			_add_delta(deltas, target, {"guowei": -2, "mengxin": 3})
-			_add_delta(deltas, monarch, {"zhanxin": -2})
-	elif action_id == "alienate":
-		if stance == "推亲秦":
-			_add_delta(deltas, target, {"mengxin": -10})
-			for c in ["qin", "zhao", "qi"]:
-				if c != monarch and c != target:
-					_add_delta(deltas, c, {"mengxin": -6})
-					break
-		else:  # 推合纵：劝阻/反制，合纵巩固
-			_add_delta(deltas, target, {"mengxin": 3})
-			for c in ["qin", "zhao", "qi"]:
-				if c != monarch and c != target:
-					_add_delta(deltas, c, {"mengxin": 3})
-					break
-	elif action_id == "lure":
-		if stance == "推亲秦":
-			_add_delta(deltas, target, {"mengxin": 8})
-			for c in ["qin", "zhao", "qi"]:
-				if c != monarch and c != target:
-					_add_delta(deltas, c, {"mengxin": -5})
-					break
-		else:  # 推合纵：戳穿利诱
-			_add_delta(deltas, target, {"mengxin": -2})
-			for c in ["qin", "zhao", "qi"]:
-				if c != monarch and c != target:
-					_add_delta(deltas, c, {"mengxin": 3})
-					break
-	elif action_id == "prepare":
-		if stance == "推亲秦":
-			_add_delta(deltas, monarch, {"guowei": 5, "zhanxin": 7})
-		else:  # 推合纵：劝缓备战
-			_add_delta(deltas, monarch, {"zhanxin": -3})
-			for c in ["qin", "zhao", "qi"]:
-				if c != monarch:
-					_add_delta(deltas, c, {"mengxin": 2})
-	elif action_id == "seek_alliance":
-		if stance == "推合纵":
-			_add_delta(deltas, monarch, {"mengxin": 8})
-			_add_delta(deltas, target, {"mengxin": 8})
-		else:  # 推亲秦：劝赵放弃求盟
-			_add_delta(deltas, monarch, {"mengxin": -3})
-			_add_delta(deltas, target, {"mengxin": -3})
-	elif action_id == "probe":
-		# 试探本身无数值影响，立场只影响后续记忆
-		pass
-	elif action_id == "observation":
-		if stance == "推合纵":
-			# 齐从观望转向靠拢合纵
-			_add_delta(deltas, monarch, {"mengxin": 5})
-		else:  # 推亲秦：齐坐实观望渔利
-			_add_delta(deltas, monarch, {"zhanxin": -2, "mengxin": -3})
-	elif action_id == "wait_price":
-		if stance == "推亲秦":
-			_add_delta(deltas, target, {"mengxin": 8})
-			_add_delta(deltas, monarch, {"mengxin": 8})
-		else:  # 推合纵：拒绝出价
-			_add_delta(deltas, target, {"mengxin": -2})
-			_add_delta(deltas, monarch, {"mengxin": 2})
-	elif action_id == "hijack":
-		if stance == "推亲秦":
-			_add_delta(deltas, target, {"guowei": -5})
-			_add_delta(deltas, monarch, {"guowei": 4})
-		else:  # 推合纵：劝止趁火打劫
-			_add_delta(deltas, target, {"mengxin": 3})
-			_add_delta(deltas, monarch, {"guowei": -1})
-	elif action_id == "self_protect":
-		if stance == "推合纵":
-			# 齐从闭门自保转合纵
-			_add_delta(deltas, monarch, {"mengxin": 3})
-		else:
-			pass
-
-	# 应用到 State
-	for country in deltas.keys():
-		var d: Dictionary = deltas[country]
-		if not d.is_empty():
-			State.apply_country_delta(country, d)
-
-	return {"deltas": deltas, "note": _describe_delta(monarch, action_id + "·" + stance, target, deltas)}
-
-func _default_target_for(monarch: String, _action_id: String) -> String:
-	for c in ["qin", "zhao", "qi"]:
-		if c != monarch:
-			return c
-	return ""
-
-func settle_agent_action(action: Dictionary) -> Dictionary:
-	var actor: String = String(action.get("actor", ""))
-	var target: String = String(action.get("target_country", ""))
-	var atype: String = String(action.get("action_type", ""))
-	var deltas: Dictionary = {}
-
-	if atype == "pressure":
-		_add_delta(deltas, target, {"guowei": -5})
-		_add_delta(deltas, actor, {"zhanxin": 3})
-	elif atype == "alienate":
-		_add_delta(deltas, target, {"mengxin": -8})
-		for c in ["qin", "zhao", "qi"]:
-			if c != actor and c != target:
-				_add_delta(deltas, c, {"mengxin": -4})
+	var deltas_by_stance: Dictionary = (STANCE_AWARE_DELTAS.get(monarch, {}) as Dictionary).get(action_id, {})
+	if deltas_by_stance.is_empty():
+		# LLM 给出的 action 不在该君主动作集内 → 全表兜底查
+		for m in STANCE_AWARE_DELTAS.keys():
+			var cand: Dictionary = (STANCE_AWARE_DELTAS[m] as Dictionary).get(action_id, {})
+			if not cand.is_empty():
+				deltas_by_stance = cand
 				break
-	elif atype == "lure":
-		_add_delta(deltas, target, {"mengxin": 5})
-		for c in ["qin", "zhao", "qi"]:
-			if c != actor and c != target:
-				_add_delta(deltas, c, {"mengxin": -3})
-				break
-	elif atype == "prepare":
-		_add_delta(deltas, actor, {"guowei": 3, "zhanxin": 5})
-	elif atype == "seek_alliance":
-		_add_delta(deltas, actor, {"mengxin": 5})
-		_add_delta(deltas, target, {"mengxin": 5})
-	elif atype == "probe":
-		pass
-	elif atype == "observation":
-		_add_delta(deltas, actor, {"zhanxin": -2, "mengxin": -2})
-	elif atype == "wait_price":
-		_add_delta(deltas, target, {"mengxin": 5})
-		_add_delta(deltas, actor, {"mengxin": 5})
-	elif atype == "hijack":
-		_add_delta(deltas, target, {"guowei": -3})
-		_add_delta(deltas, actor, {"guowei": 2})
-	elif atype == "self_protect":
-		pass
+	# 未知立场（如自定义表态）按中立结算
+	var deltas: Dictionary = deltas_by_stance.get(stance, deltas_by_stance.get("中立", {}))
+	if deltas.is_empty():
+		return {"deltas": {}, "note": "无变化"}
+	State.apply_world_delta(deltas)
+	var label: String = String(_ACTION_CN.get(action_id, action_id))
+	var note: String = "%s·%s（%s）→ %s" % [_country_name(monarch), label, stance, describe_world_delta(deltas)]
+	return {"deltas": deltas, "note": note}
 
-	# 应用到 State
-	for country in deltas.keys():
-		var d: Dictionary = deltas[country]
-		if not d.is_empty():
-			State.apply_country_delta(country, d)
+func settle_proposed_action(monarch: String, proposed_action: String, target: String = "") -> Dictionary:
+	return settle_proposed_action_with_stance(monarch, proposed_action, "中立", target)
 
-	return {"deltas": deltas, "note": _describe_delta(actor, atype, target, deltas)}
+# === 朝议成交/威胁 → 世界数值（小额；让说话有后果） ===
+func settle_chat_pact(a: String, b: String) -> Dictionary:
+	var deltas: Dictionary
+	if a == "qin" or b == "qin":
+		deltas = {"qin_baye": 2}
+	else:
+		deltas = {"liu_guo_meng": 2}
+	State.apply_world_delta(deltas)
+	return {"deltas": deltas, "note": "%s%s盟好初成 → %s" % [_country_name(a), _country_name(b), describe_world_delta(deltas)]}
 
-func _add_delta(deltas: Dictionary, country: String, d: Dictionary) -> void:
-	if country == "":
-		return
-	if not deltas.has(country):
-		deltas[country] = {}
-	var cur: Dictionary = deltas[country]
-	for k in d.keys():
-		cur[k] = int(cur.get(k, 0)) + int(d[k])
-	deltas[country] = cur
+func settle_chat_threat(a: String, b: String) -> Dictionary:
+	var deltas: Dictionary = {"tian_xia_fenluan": 1}
+	State.apply_world_delta(deltas)
+	return {"deltas": deltas, "note": "%s威逼%s，天下侧目 → %s" % [_country_name(a), _country_name(b), describe_world_delta(deltas)]}
 
-func _describe_delta(actor: String, atype: String, target: String, deltas: Dictionary) -> String:
-	var frags: Array = []
-	for c in deltas.keys():
-		var d: Dictionary = deltas[c]
-		var parts: Array = []
-		for k in d.keys():
-			var v: int = int(d[k])
-			var sign_str: String = "+" if v >= 0 else ""
-			parts.append("%s%s%d" % [_attr_label(k), sign_str, v])
-		if parts.size() > 0:
-			frags.append("%s[%s]" % [_country_name(c), ", ".join(parts)])
-	return " ".join(frags)
-
-func _attr_label(k: String) -> String:
-	match k:
-		"guowei": return "国威"
-		"mengxin": return "盟信"
-		"zhanxin": return "战心"
-		_: return k
+# === 描述工具 ===
+func describe_world_delta(deltas: Dictionary) -> String:
+	var parts: Array = []
+	for k in deltas.keys():
+		var v: int = int(deltas[k])
+		if v == 0:
+			continue
+		var sign_str: String = "+" if v >= 0 else ""
+		parts.append("%s%s%d" % [String(_ATTR_LABELS.get(k, k)), sign_str, v])
+	return " ".join(parts)
 
 static func _country_name(c: String) -> String:
 	match c:
@@ -282,68 +312,30 @@ static func _country_name(c: String) -> String:
 		"qi": return "齐"
 		_: return c
 
-# mock 兜底：LLM 断线时用。宽容度高一些，不要一律 reject。
-# 综合分 = 长度分(0-4) + 关键词分(0-4) + 基线(2)，落在 [2, 10]
-func parse_dialogue(text: String, monarch: String, direction: String) -> Dictionary:
-	var t: String = text.strip_edges()
-	var length_score: float = 0.0
-	if t.length() >= 60:
-		length_score = 4.0
-	elif t.length() >= 30:
-		length_score = 2.5
-	elif t.length() >= 10:
-		length_score = 1.0
-
-	var kw_score: float = 0.0
-	var accept_kws: Array = ["合纵", "抗秦", "结盟", "联齐", "联赵", "共抗", "唇齿", "唯有", "必须", "应", "当", "宜", "可"]
-	var reject_kws: Array = ["投降", "不敢", "算了", "退兵", "臣服", "不能", "不愿", "无法"]
-	for k in accept_kws:
-		if t.find(k) >= 0:
-			kw_score += 0.8
-	for k in reject_kws:
-		if t.find(k) >= 0:
-			kw_score -= 1.5
-	kw_score = clampf(kw_score, -3.0, 4.0)
-
-	var score: float = clampf(2.0 + length_score + kw_score, 0.5, 9.5)
-	var verdict: String = "accept" if score >= 6.0 else "reject"
-
-	return {
-		"verdict": verdict,
-		"comp": score,
-		"stance": score,
-		"pers": score,
-		"score": score
-	}
-
-# === 漂移 ===
+# === 漂移（回合 2/4 开始时，第 6 回合不漂移；含 RFC-003-A §十 调参：秦 +4→+3，乱 +2→+3） ===
 func apply_drift() -> void:
-	var pd: Dictionary = {"hezong": -4, "xinji": -3}
-	if not State.acted_this_turn:
-		pd["mingwang"] = -2
-	State.apply_player_delta(pd)
-	State.apply_country_delta("qin",  {"guowei": 3})
-	State.apply_country_delta("zhao", {"guowei": 2, "mengxin": -2})
-	State.apply_country_delta("qi",   {"guowei": 2, "mengxin": -2})
-
-# === 终局 ===
+	State.apply_world_delta({
+		"qin_baye": 3,
+		"liu_guo_meng": -3,
+		"tian_xia_fenluan": 3
+	})
+# === 终局（RFC-004 Phase D：实体锚点）===
+# 终局看摸得着的东西——城池与军事同盟；派生三维只用来判乱局。
 func check_ending() -> Dictionary:
-	var death_key: String = State.check_death()
-	if death_key != "":
-		return {"type": "death", "detail": death_key, "mbti_type": judge_mbti()}
 	if State.current_round < State.max_round:
 		return {"type": "none", "detail": "", "mbti_type": ""}
-	var zhao_mx: int = int(State.country_attrs.get("zhao", {}).get("mengxin", 0))
-	var qi_mx: int   = int(State.country_attrs.get("qi",   {}).get("mengxin", 0))
-	var qin_gw: int  = int(State.country_attrs.get("qin",  {}).get("guowei", 0))
+	var qc: int = State.get_national("qin", "cities")
+	var luan: int = int(State.world_attrs.get("tian_xia_fenluan", 0))
 	var situation: String = "undecided"
-	if zhao_mx >= 55 and qi_mx >= 55 and qin_gw <= 75:
-		situation = "alliance_victory"
-	elif (zhao_mx <= 30 or qi_mx <= 30) and qin_gw >= 80:
-		situation = "lianheng_victory"
-	return {"type": "situation", "detail": situation, "mbti_type": judge_mbti()}
+	if qc >= 28:
+		situation = "lianheng_victory"  # 秦净得三城以上（约一场大胜或两场小胜），东出已成
+	elif State.has_alliance("zhao", "qi") and qc <= 25:
+		situation = "alliance_victory"  # 同盟撑到终局且秦未得寸土
+	elif luan >= 80 or int(State.stats.get("wars_started", 0)) >= 4:
+		situation = "chaos"  # 四战连绵或乱值爆表：民不聊生
+	return {"type": "situation", "detail": situation, "mbti_type": judge_stance()}
 
-# === 立场判定（v7.3.1） ===
+# === 立场判定 ===
 func judge_stance() -> String:
 	var hz: int = int(State.stance_scores.get("hezong", 0))
 	var nt: int = int(State.stance_scores.get("neutral", 0))
@@ -352,8 +344,6 @@ func judge_stance() -> String:
 		return "hezong"
 	if qn > nt and qn > hz:
 		return "qin"
-	if nt >= hz and nt >= qn:
-		return "neutral"
 	return "neutral"
 
 func judge_mbti() -> String:
@@ -366,8 +356,15 @@ func _find_card(card_id: String) -> Card:
 			return c as Card
 	return null
 
+# 刺探情报：目标君主当前意图（开视野），无意图记录时回退大势快照
 func _gen_intel(target_country: String) -> String:
-	var gw: int = int(State.country_attrs.get(target_country, {}).get("guowei", 0))
-	var mx: int = int(State.country_attrs.get(target_country, {}).get("mengxin", 0))
-	var zx: int = int(State.country_attrs.get(target_country, {}).get("zhanxin", 0))
-	return "[情报]%s: 国威=%d 盟信=%d 战心=%d" % [target_country, gw, mx, zx]
+	var am = get_node_or_null("/root/AgentManager")
+	if am != null and am.has_method("get_country_intent"):
+		var intent: String = String(am.get_country_intent(target_country))
+		if intent != "":
+			return "[情报·刺探%s] %s" % [_country_name(target_country), intent]
+	var wa: Dictionary = State.world_attrs
+	return "[情报·刺探%s] 其国未有动作。天下大势：秦之霸业%d 六国之盟%d 天下纷乱%d" % [
+		_country_name(target_country),
+		int(wa.get("qin_baye", 0)), int(wa.get("liu_guo_meng", 0)), int(wa.get("tian_xia_fenluan", 0))
+	]

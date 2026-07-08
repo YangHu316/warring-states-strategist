@@ -92,7 +92,8 @@ func _build_direction_buttons() -> void:
 			continue
 		if i < dirs.size():
 			var dkey: String = String(dirs[i])
-			b.text = String(DIR_LABELS.get(dkey, dkey))
+			var eff: String = _dir_effect_desc(dkey)
+			b.text = String(DIR_LABELS.get(dkey, dkey)) + (("  （" + eff + "）") if eff != "" else "")
 			b.visible = true
 			var key_str: String = dkey
 			b.pressed.connect(func(): _emit(key_str))
@@ -102,12 +103,34 @@ func _build_direction_buttons() -> void:
 func _refresh_rate() -> void:
 	if card == null:
 		return
-	var attr_val: int = int(State.player_attrs.get(card.scale_attr, 0))
-	var base_rate: int = int(round(float(card.base_rate) + float(attr_val) * float(card.scale_coef)))
-	var bonus: int = _intel_selected.size() * 5
+	var base_rate: int = int(card.base_rate)
+	var bonus: int = _intel_selected.size() * State.INTEL_BONUS_PER_CARD
 	var rate: int = clampi(base_rate + bonus, 5, 95)
 	var target_disp: String = String(CN.get(_target, _target)) if _target != "" else "未选"
-	rate_label.text = "目标：%s | 基础 %d%% + 情报×%d = %d%%" % [target_disp, base_rate, _intel_selected.size(), rate]
+	var extra: String = ""
+	if card.id == "alienate":
+		var am = get_node_or_null("/root/AgentManager")
+		var neg: bool = am != null and am.has_method("is_country_negotiating") and bool(am.is_country_negotiating(_target))
+		if neg:
+			extra = "\n时机正好：%s谈判中 → 全额拆盟（六国之盟-5 天下纷乱+3）" % target_disp
+		else:
+			extra = "\n时机已过：%s已定策 → 仅添乱（天下纷乱+2）" % target_disp
+	elif card.id == "spy":
+		extra = "\n成功：窥知%s君主当前意图（精确情报牌）" % target_disp
+	rate_label.text = "目标：%s | 基础 %d%% + 情报×%d = %d%%%s" % [target_disp, base_rate, _intel_selected.size(), rate, extra]
+
+# 该方向成功时的世界数值变化预览
+func _dir_effect_desc(dkey: String) -> String:
+	if card == null:
+		return ""
+	var on_succ: Dictionary = card.raw.get("on_success", {})
+	var deltas: Variant = on_succ.get(dkey, null)
+	if typeof(deltas) != TYPE_DICTIONARY or (deltas as Dictionary).is_empty():
+		return ""
+	var arb = get_node_or_null("/root/Arbiter")
+	if arb != null and arb.has_method("describe_world_delta"):
+		return String(arb.describe_world_delta(deltas))
+	return ""
 
 func _emit(direction: String) -> void:
 	if _target == "":

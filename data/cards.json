@@ -3,38 +3,38 @@
     {
       "id": "persuade",
       "name": "游说",
-      "description": "向君主陈述合纵之利。需选择方向。",
+      "description": "向君主陈述天下大势之利害。需选择方向。",
       "cost": 1,
       "target_type": "single",
       "requires_direction": true,
       "directions": ["push_hezong", "push_qin", "neutral"],
-      "base_rate": 40,
-      "scale_attr": "mingwang",
-      "scale_coef": 0.30,
+      "base_rate": 45,
+      "scale_attr": "",
+      "scale_coef": 0.0,
       "on_success": {
-        "push_hezong": {"hezong": 8, "mingwang": 3, "xinji": 3},
-        "push_qin":    {"hezong": -8, "mingwang": 3, "xinji": 3},
-        "neutral":     {"mingwang": 5, "xinji": 3}
+        "push_hezong": {"liu_guo_meng": 5, "qin_baye": -3},
+        "push_qin":    {"qin_baye": 5, "liu_guo_meng": -3},
+        "neutral":     {"tian_xia_fenluan": -3}
       },
-      "on_fail": {"mingwang": -3}
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "message",
       "name": "传信",
-      "description": "送达书信。低风险，需选择方向。",
+      "description": "递送消息以动其国——所传之信入列国史册，君主会记得。需选择方向。",
       "cost": 1,
       "target_type": "single",
       "requires_direction": true,
       "directions": ["favor_hezong", "favor_lianheng", "neutral"],
-      "base_rate": 40,
-      "scale_attr": "hezong",
-      "scale_coef": 0.30,
+      "base_rate": 45,
+      "scale_attr": "",
+      "scale_coef": 0.0,
       "on_success": {
-        "favor_hezong":   {"hezong": 5, "xinji": 3},
-        "favor_lianheng": {"hezong": -5, "xinji": 3},
-        "neutral":        {"xinji": 5}
+        "favor_hezong":   {"liu_guo_meng": 3},
+        "favor_lianheng": {"qin_baye": 3},
+        "neutral":        {"tian_xia_fenluan": -2}
       },
-      "on_fail": {"mingwang": -3}
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "promise",
@@ -44,44 +44,44 @@
       "target_type": "single",
       "requires_direction": true,
       "directions": ["aid", "ally", "neutral"],
-      "base_rate": 45,
-      "scale_attr": "mingwang",
-      "scale_coef": 0.30,
+      "base_rate": 50,
+      "scale_attr": "",
+      "scale_coef": 0.0,
       "on_success": {
-        "aid":     {"xinji": 6, "mingwang": 3},
-        "ally":    {"xinji": 4, "mingwang": 5, "hezong": 3},
-        "neutral": {"xinji": 5, "mingwang": 2}
+        "aid":     {"liu_guo_meng": 2, "tian_xia_fenluan": -1},
+        "ally":    {"liu_guo_meng": 4},
+        "neutral": {"tian_xia_fenluan": -2}
       },
-      "on_fail": {"mingwang": -3}
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "alienate",
       "name": "离间",
-      "description": "在君主面前挑拨另一国。无方向。",
+      "description": "乘谈判之隙挑拨离间——目标谈判中打出方有全效，已定策则只添乱。",
       "cost": 1,
       "target_type": "single",
       "requires_direction": false,
       "directions": [],
-      "base_rate": 35,
-      "scale_attr": "xinji",
-      "scale_coef": 0.30,
-      "on_success_high_mengxin": {"hezong": -6, "xinji": 5, "mingwang": 2},
-      "on_success_low_mengxin":  {"xinji": 3, "mingwang": 1},
-      "on_fail": {"mingwang": -3}
+      "base_rate": 40,
+      "scale_attr": "",
+      "scale_coef": 0.0,
+      "on_success_in_talks": {"liu_guo_meng": -5, "tian_xia_fenluan": 3},
+      "on_success_settled":  {"tian_xia_fenluan": 2},
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "spy",
       "name": "刺探",
-      "description": "探听君主意图，生成情报牌。",
+      "description": "窥探目标君主的当前意图与决心，产出精确情报牌。",
       "cost": 1,
       "target_type": "single",
       "requires_direction": false,
       "directions": [],
-      "base_rate": 50,
-      "scale_attr": "xinji",
-      "scale_coef": 0.25,
-      "on_success": {"xinji": 3},
-      "on_fail": {"mingwang": -3}
+      "base_rate": 55,
+      "scale_attr": "",
+      "scale_coef": 0.0,
+      "on_success": {"tian_xia_fenluan": 1},
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "audience",
@@ -95,7 +95,7 @@
       "scale_attr": "",
       "scale_coef": 0.0,
       "on_success": {},
-      "on_fail": {"mingwang": -5}
+      "on_fail": {"tian_xia_fenluan": 2}
     },
     {
       "id": "intel",

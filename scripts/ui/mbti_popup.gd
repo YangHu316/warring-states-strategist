@@ -69,4 +69,3 @@ func _emit_answer(label: String) -> void:
 		"TIMEOUT":
 			choice = "neutral"
 	emit_signal("answered", String(question.get("id", "")), dim, choice)
-	emit_signal("answered", String(question.get("id", "")), dim, choice)

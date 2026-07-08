@@ -25,6 +25,7 @@ State="*res://scripts/core/state.gd"
 DataLoader="*res://scripts/core/data_loader.gd"
 Arbiter="*res://scripts/core/arbiter.gd"
 AgentManager="*res://scripts/core/agent_manager.gd"
+WarManager="*res://scripts/core/war_manager.gd"
 LLMClient="*res://scripts/core/llm_client.gd"
 
 [display]
